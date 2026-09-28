@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+.turbo
+coverage
+
+# local verification artifacts
+apps/dashboard/dist

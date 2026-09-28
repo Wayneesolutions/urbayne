@@ -1,0 +1,10 @@
+{
+  "name": "Booth worker",
+  "short_name": "Booth",
+  "start_url": "/w/",
+  "scope": "/w/",
+  "display": "standalone",
+  "background_color": "#F6F7FB",
+  "theme_color": "#26203F",
+  "icons": [{ "src": "/w/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
