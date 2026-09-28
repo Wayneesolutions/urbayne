@@ -1,0 +1,25 @@
+{
+  "name": "campaign-suite",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "dev:api": "pnpm --filter @cs/api dev",
+    "db:up": "docker compose up -d",
+    "db:migrate": "pnpm --filter @cs/db migrate",
+    "guardrails": "node scripts/guardrails.mjs",
+    "dev:dashboard": "pnpm --filter @cs/dashboard dev",
+    "build:dashboard": "pnpm --filter @cs/dashboard build",
+    "seed:demo": "pnpm --filter @cs/api seed:demo",
+    "demo": "pnpm build:dashboard && pnpm db:migrate && pnpm seed:demo && pnpm dev:api"
+  },
+  "devDependencies": {
+    "turbo": "^2.1.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "tsx": "^4.19.0",
+    "@types/node": "^22.7.0"
+  }
+}

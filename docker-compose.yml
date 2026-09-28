@@ -1,0 +1,12 @@
+# Local development only. Production uses AWS RDS per region (ap-south-1 for IN, ca-central-1 for CA).
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: cs
+      POSTGRES_PASSWORD: cs
+      POSTGRES_DB: campaign_suite
+    ports: ["5432:5432"]
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]

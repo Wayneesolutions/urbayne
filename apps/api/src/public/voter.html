@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="pa">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Campaign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700&family=Baloo+Paaji+2:wght@500;700&family=Noto+Sans:wght@400;600&family=Noto+Sans+Gurmukhi:wght@400;600&family=Noto+Sans+Devanagari:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #26203F;
+    --ink-soft: #5B5575;
+    --paper: #F6F7FB;
+    --card: #FFFFFF;
+    --marigold: #E8A317;
+    --marigold-deep: #B97C00;
+    --leaf: #2F7D5B;
+    --line: #E3E4EE;
+    --radius-big: 28px;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--paper); color: var(--ink);
+    font: 18px/1.55 "Noto Sans", "Noto Sans Gurmukhi", "Noto Sans Devanagari", system-ui, sans-serif;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+  body[data-lang="pa"] { font-family: "Noto Sans Gurmukhi", "Noto Sans", sans-serif; }
+  body[data-lang="hi"] { font-family: "Noto Sans Devanagari", "Noto Sans", sans-serif; }
+  .display { font-family: "Baloo 2", sans-serif; font-weight: 700; }
+  body[data-lang="pa"] .display { font-family: "Baloo Paaji 2", "Baloo 2", sans-serif; }
+  main { max-width: 520px; margin: 0 auto; padding: 16px 16px 120px; }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--marigold-deep); outline-offset: 3px; }
+
+  .demo { background: #FFF3D6; color: #6B4A00; border-radius: 12px; padding: 8px 14px; font-size: 15px; margin-bottom: 12px; }
+  .langs { display: flex; gap: 8px; margin-bottom: 20px; }
+  .langs button { flex: 1; min-height: 52px; border-radius: 999px; border: 2px solid var(--line); background: var(--card); font-size: 18px; }
+  .langs button[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: #fff; }
+
+  header.hero { padding: 8px 4px 20px; }
+  .hero h1 { margin: 0; font-size: 40px; line-height: 1.1; }
+  .hero p { margin: 8px 0 0; color: var(--ink-soft); font-size: 19px; }
+
+  section.step { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-big); padding: 20px; margin-bottom: 16px; }
+  .step-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .num { width: 40px; height: 40px; border-radius: 50%; background: var(--ink); color: #fff; display: grid; place-items: center; font-weight: 700; flex: none; }
+  .step h2 { margin: 0; font-size: 26px; line-height: 1.2; }
+  .step.locked { opacity: .45; }
+
+  .search { width: 100%; min-height: 56px; border: 2px solid var(--line); border-radius: var(--radius); padding: 0 16px; background: var(--paper); }
+  .areas { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+  .area { min-height: 64px; border-radius: var(--radius); border: 2px solid var(--line); background: var(--paper); text-align: left; padding: 10px 14px; line-height: 1.25; }
+  .area[aria-pressed="true"] { border-color: var(--leaf); background: #E8F4EE; }
+
+  .listen { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 84px; border: 0; border-radius: var(--radius-big); background: var(--marigold); color: var(--ink); padding: 12px 20px; font-size: 24px; margin: 4px 0 14px; }
+  .listen .disc { width: 56px; height: 56px; border-radius: 50%; background: var(--ink); display: grid; place-items: center; flex: none; }
+  .listen[aria-pressed="true"] { background: var(--marigold-deep); color: #fff; }
+  .page h3 { margin: 12px 0 4px; font-size: 21px; }
+  .page p { margin: 0 0 8px; white-space: pre-line; }
+
+  .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .choice { min-height: 96px; border-radius: var(--radius); border: 2px solid var(--line); background: var(--paper); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 10px; text-align: center; line-height: 1.2; }
+  .choice svg { width: 34px; height: 34px; }
+  .choice[aria-pressed="true"] { border-color: var(--leaf); background: #E8F4EE; }
+  label.field { display: block; margin-top: 14px; font-weight: 600; }
+  label.field input, label.field textarea { display: block; width: 100%; margin-top: 6px; min-height: 56px; border: 2px solid var(--line); border-radius: var(--radius); padding: 12px 16px; background: var(--paper); }
+  .consent { display: flex; gap: 12px; align-items: flex-start; margin-top: 14px; padding: 12px; border-radius: var(--radius); background: var(--paper); }
+  .consent input { width: 28px; height: 28px; flex: none; margin-top: 2px; accent-color: var(--leaf); }
+  .consent-listen { border: 0; background: none; color: var(--marigold-deep); font-weight: 600; padding: 0; text-decoration: underline; }
+  .primary { width: 100%; min-height: 64px; border: 0; border-radius: var(--radius-big); background: var(--leaf); color: #fff; font-size: 22px; font-weight: 700; margin-top: 16px; }
+  .primary:disabled { opacity: .5; }
+  .done { text-align: center; padding: 24px 8px; }
+  .done .tick { width: 72px; height: 72px; border-radius: 50%; background: var(--leaf); margin: 0 auto 12px; display: grid; place-items: center; }
+  .error { color: #A1260D; margin-top: 10px; }
+
+  .ask-open { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom)); width: min(488px, calc(100% - 32px)); min-height: 60px; border-radius: 999px; border: 2px solid var(--ink); background: var(--card); font-size: 20px; font-weight: 600; box-shadow: 0 6px 24px rgba(38, 32, 63, .18); }
+  dialog { border: 0; border-radius: var(--radius-big) var(--radius-big) 0 0; width: 100%; max-width: min(520px, 100%); max-height: 88vh; padding: 0; margin: auto auto 0; inset: auto 0 0 0; }
+  dialog::backdrop { background: rgba(38, 32, 63, .45); }
+  .chat { display: flex; flex-direction: column; height: min(640px, 88vh); }
+  .chat-head { padding: 16px 20px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .chat-head small { color: var(--ink-soft); display: block; font-size: 14px; line-height: 1.3; }
+  .chat-log { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 86%; padding: 12px 14px; border-radius: 18px; white-space: pre-line; }
+  .msg.me { align-self: flex-end; background: var(--ink); color: #fff; border-bottom-right-radius: 6px; }
+  .msg.bot { align-self: flex-start; background: var(--paper); border-bottom-left-radius: 6px; }
+  .msg .src { display: block; font-size: 14px; color: var(--ink-soft); margin-top: 6px; }
+  .chat-form { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--line); }
+  .chat-form input { flex: 1; min-height: 56px; border: 2px solid var(--line); border-radius: 999px; padding: 0 18px; }
+  .chat-form button { min-width: 88px; border: 0; border-radius: 999px; background: var(--ink); color: #fff; font-weight: 700; }
+  .close { border: 0; background: var(--paper); border-radius: 999px; min-width: 48px; min-height: 48px; font-size: 22px; }
+  @media (prefers-reduced-motion: no-preference) { .listen[aria-pressed="true"] .disc { animation: pulse 1.2s ease-in-out infinite; } }
+  @keyframes pulse { 50% { transform: scale(1.08); } }
+</style>
+</head>
+<body data-lang="pa">
+<main>
+  <div id="demo" class="demo" hidden></div>
+  <div class="langs" role="group" aria-label="Language">
+    <button data-lang="pa" lang="pa">ਪੰਜਾਬੀ</button>
+    <button data-lang="hi" lang="hi">हिंदी</button>
+    <button data-lang="en" lang="en">English</button>
+  </div>
+
+  <header class="hero">
+    <h1 class="display" id="candidate"></h1>
+    <p id="tagline"></p>
+  </header>
+
+  <section class="step" id="step1">
+    <div class="step-head"><span class="num">1</span><h2 class="display" data-t="pickArea"></h2></div>
+    <input class="search" id="areaSearch" type="search" autocomplete="off">
+    <div class="areas" id="areas"></div>
+  </section>
+
+  <section class="step locked" id="step2" aria-disabled="true">
+    <div class="step-head"><span class="num">2</span><h2 class="display" data-t="hearPlan"></h2></div>
+    <div id="plan"><p data-t="pickFirst"></p></div>
+  </section>
+
+  <section class="step locked" id="step3" aria-disabled="true">
+    <div class="step-head"><span class="num">3</span><h2 class="display" data-t="join"></h2></div>
+    <form id="signup" novalidate>
+      <div class="choices" role="group">
+        <button type="button" class="choice" data-interest="updates"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11v2a8 8 0 0 0 16 0v-2M12 3v12m-4-4 4 4 4-4"/></svg><span data-t="iUpdates"></span></button>
+        <button type="button" class="choice" data-interest="volunteer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 11V7a2 2 0 1 1 4 0v4m0-2V5a2 2 0 1 1 4 0v6m0-3a2 2 0 1 1 4 0v5a7 7 0 0 1-14 0v-2a2 2 0 1 1 4 0"/></svg><span data-t="iVolunteer"></span></button>
+        <button type="button" class="choice" data-interest="issue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span data-t="iIssue"></span></button>
+        <button type="button" class="choice" data-interest="question"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z"/></svg><span data-t="iCall"></span></button>
+      </div>
+      <label class="field" id="issueField" hidden><span data-t="issueLabel"></span><textarea id="issueText" rows="2"></textarea></label>
+      <label class="field"><span data-t="nameLabel"></span><input id="name" autocomplete="name"></label>
+      <label class="field"><span data-t="phoneLabel"></span><input id="phone" inputmode="tel" autocomplete="tel"></label>
+      <div class="consent"><input type="checkbox" id="consentCalls"><div><label for="consentCalls" data-t="consentCalls"></label> <button type="button" class="consent-listen" data-read="consentCalls" data-t="listen"></button></div></div>
+      <div class="consent"><input type="checkbox" id="consentSms"><div><label for="consentSms" data-t="consentSms"></label></div></div>
+      <p class="error" id="formError" role="alert" hidden></p>
+      <button class="primary" id="submit" type="submit" data-t="send"></button>
+    </form>
+  </section>
+</main>
+
+<button class="ask-open" id="askOpen" data-t="ask"></button>
+<dialog id="askDialog">
+  <div class="chat">
+    <div class="chat-head">
+      <div><strong data-t="askTitle"></strong><small id="disclosure"></small></div>
+      <button class="close" id="askClose" aria-label="Close">×</button>
+    </div>
+    <div class="chat-log" id="log" aria-live="polite"></div>
+    <form class="chat-form" id="askForm"><input id="q" autocomplete="off"><button data-t="askSend"></button></form>
+  </div>
+</dialog>
+
+<script>
+const T = {
+  pa: { pickArea: 'ਆਪਣਾ ਪਿੰਡ ਜਾਂ ਮੁਹੱਲਾ ਚੁਣੋ', search: 'ਨਾਮ ਲਿਖੋ ਜਾਂ ਹੇਠਾਂ ਚੁਣੋ', hearPlan: 'ਤੁਹਾਡੇ ਇਲਾਕੇ ਲਈ ਯੋਜਨਾ', pickFirst: 'ਪਹਿਲਾਂ ਆਪਣਾ ਇਲਾਕਾ ਚੁਣੋ।', listen: 'ਸੁਣੋ', stop: 'ਰੋਕੋ', join: 'ਸਾਡੇ ਨਾਲ ਜੁੜੋ',
+    iUpdates: 'ਖ਼ਬਰਾਂ ਲਓ', iVolunteer: 'ਮਦਦ ਕਰੋ', iIssue: 'ਸਮੱਸਿਆ ਦੱਸੋ', iCall: 'ਫ਼ੋਨ ਕਰੋ', issueLabel: 'ਸਮੱਸਿਆ ਕੀ ਹੈ?', nameLabel: 'ਤੁਹਾਡਾ ਨਾਮ', phoneLabel: 'ਮੋਬਾਈਲ ਨੰਬਰ',
+    consentCalls: 'ਹਾਂ, ਮੁਹਿੰਮ ਮੈਨੂੰ ਫ਼ੋਨ ਕਰ ਸਕਦੀ ਹੈ (ਆਟੋਮੈਟਿਕ ਕਾਲਾਂ ਸਮੇਤ)। ਮੈਂ ਕਦੇ ਵੀ "ਬੰਦ ਕਰੋ" ਕਹਿ ਕੇ ਰੋਕ ਸਕਦਾ/ਸਕਦੀ ਹਾਂ।', consentSms: 'ਹਾਂ, ਮੈਨੂੰ SMS ਭੇਜੋ।', send: 'ਭੇਜੋ',
+    thanks: 'ਧੰਨਵਾਦ! ਅਸੀਂ ਜਲਦੀ ਸੰਪਰਕ ਕਰਾਂਗੇ।', needChoice: 'ਘੱਟੋ-ਘੱਟ ਇੱਕ ਚੋਣ ਕਰੋ ਅਤੇ ਮੋਬਾਈਲ ਨੰਬਰ ਲਿਖੋ।', ask: 'ਸਵਾਲ ਪੁੱਛੋ', askTitle: 'ਸਵਾਲ ਪੁੱਛੋ', askSend: 'ਪੁੱਛੋ', noPlan: 'ਇਸ ਇਲਾਕੇ ਦੀ ਯੋਜਨਾ ਜਲਦੀ ਆਵੇਗੀ।', source: 'ਸਰੋਤ', demo: 'ਡੈਮੋ ਪੰਨਾ: ਇਹ ਅਸਲ ਮੁਹਿੰਮ ਨਹੀਂ ਹੈ।' },
+  hi: { pickArea: 'अपना गाँव या मोहल्ला चुनें', search: 'नाम लिखें या नीचे चुनें', hearPlan: 'आपके इलाके के लिए योजना', pickFirst: 'पहले अपना इलाका चुनें।', listen: 'सुनें', stop: 'रोकें', join: 'हमसे जुड़ें',
+    iUpdates: 'खबरें पाएं', iVolunteer: 'मदद करें', iIssue: 'समस्या बताएं', iCall: 'कॉल करें', issueLabel: 'समस्या क्या है?', nameLabel: 'आपका नाम', phoneLabel: 'मोबाइल नंबर',
+    consentCalls: 'हाँ, अभियान मुझे कॉल कर सकता है (स्वचालित कॉल सहित)। मैं कभी भी "बंद करो" कहकर रोक सकता/सकती हूँ।', consentSms: 'हाँ, मुझे SMS भेजें।', send: 'भेजें',
+    thanks: 'धन्यवाद! हम जल्द संपर्क करेंगे।', needChoice: 'कम से कम एक विकल्प चुनें और मोबाइल नंबर लिखें।', ask: 'सवाल पूछें', askTitle: 'सवाल पूछें', askSend: 'पूछें', noPlan: 'इस इलाके की योजना जल्द आएगी।', source: 'स्रोत', demo: 'डेमो पेज: यह असली अभियान नहीं है।' },
+  en: { pickArea: 'Choose your area', search: 'Type a name or pick below', hearPlan: 'The plan for your area', pickFirst: 'Choose your area first.', listen: 'Listen', stop: 'Stop', join: 'Join the campaign',
+    iUpdates: 'Get updates', iVolunteer: 'Volunteer', iIssue: 'Report a problem', iCall: 'Call me back', issueLabel: 'What is the problem?', nameLabel: 'Your name', phoneLabel: 'Mobile number',
+    consentCalls: 'Yes, the campaign may call me, including automated calls. I can say "stop" at any time.', consentSms: 'Yes, send me text messages.', send: 'Send',
+    thanks: 'Thank you! We will be in touch soon.', needChoice: 'Pick at least one option and enter your mobile number.', ask: 'Ask a question', askTitle: 'Ask a question', askSend: 'Ask', noPlan: 'The plan for this area is coming soon.', source: 'Source', demo: 'Demo page: this is not a real campaign.' },
+};
+const SPEECH = { pa: 'pa-IN', hi: 'hi-IN', en: 'en-IN' };
+const slug = location.pathname.split('/').filter(Boolean)[1];
+const ref = new URLSearchParams(location.search).get('ref');
+const api = (p, o) => fetch(`/api/public/${slug}${p}`, o).then(async (r) => { const j = await r.json(); if (!r.ok) throw j; return j; });
+const $ = (id) => document.getElementById(id);
+let lang = 'pa', profile, areas = [], chosen = null, interests = new Set(), speaking = null;
+
+function t(k) { return (T[lang] || T.en)[k] || T.en[k]; }
+function areaName(a) { return (lang === 'pa' && a.namePa) || (lang === 'hi' && a.nameHi) || a.nameEn; }
+function applyLang() {
+  document.body.dataset.lang = lang; document.documentElement.lang = lang;
+  document.querySelectorAll('[data-t]').forEach((el) => { el.textContent = t(el.dataset.t); });
+  document.querySelectorAll('.langs button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lang === lang)));
+  $('areaSearch').placeholder = t('search');
+  $('q').placeholder = t('askTitle');
+  if (profile) { $('disclosure').textContent = profile.assistantDisclosure[lang] || profile.assistantDisclosure.en; $('demo').textContent = t('demo'); }
+  renderAreas(); if (chosen) loadPlan();
+}
+
+// Read-aloud. Production serves pre-recorded audio per block; the demo uses the phone's own voice.
+function speak(text, btn) {
+  if (!('speechSynthesis' in window)) return;
+  if (speaking === btn) { speechSynthesis.cancel(); return; }
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = SPEECH[lang];
+  const voice = speechSynthesis.getVoices().find((v) => v.lang.startsWith(lang)) || speechSynthesis.getVoices().find((v) => v.lang.startsWith(lang === 'pa' ? 'hi' : lang));
+  if (voice) u.voice = voice;
+  const off = () => { if (btn) { btn.setAttribute('aria-pressed', 'false'); btn.querySelector('.lbl') && (btn.querySelector('.lbl').textContent = t('listen')); } speaking = null; };
+  u.onend = off; u.onerror = off;
+  if (btn) { btn.setAttribute('aria-pressed', 'true'); btn.querySelector('.lbl') && (btn.querySelector('.lbl').textContent = t('stop')); }
+  speaking = btn; speechSynthesis.speak(u);
+}
+
+function renderAreas() {
+  const q = $('areaSearch').value.trim().toLowerCase();
+  const list = areas.filter((a) => !q || [a.nameEn, a.namePa, a.nameHi].some((n) => n && n.toLowerCase().includes(q)));
+  $('areas').replaceChildren(...list.map((a) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'area'; b.textContent = areaName(a);
+    b.setAttribute('aria-pressed', String(chosen && chosen.id === a.id));
+    b.onclick = () => { chosen = a; renderAreas(); unlock(); loadPlan(); $('step2').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); };
+    return b;
+  }));
+}
+function unlock() { ['step2', 'step3'].forEach((id) => { $(id).classList.remove('locked'); $(id).removeAttribute('aria-disabled'); }); }
+
+async function loadPlan() {
+  const data = await api(`/areas/${chosen.id}?locale=${lang}`);
+  const plan = $('plan');
+  if (!data.pages.length) { plan.innerHTML = ''; const p = document.createElement('p'); p.textContent = t('noPlan'); plan.append(p); return; }
+  const all = data.pages.map((p) => `${p.title}. ${p.body}`).join('\n');
+  const listen = document.createElement('button');
+  listen.className = 'listen'; listen.type = 'button'; listen.setAttribute('aria-pressed', 'false');
+  listen.innerHTML = '<span class="disc"><svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg></span><span class="lbl display"></span>';
+  listen.querySelector('.lbl').textContent = t('listen');
+  listen.onclick = () => speak(all, listen);
+  const blocks = data.pages.map((p) => { const d = document.createElement('div'); d.className = 'page'; const h = document.createElement('h3'); h.textContent = p.title; const b = document.createElement('p'); b.textContent = p.body; d.append(h, b); return d; });
+  plan.replaceChildren(listen, ...blocks);
+}
+
+document.querySelectorAll('.choice').forEach((c) => c.addEventListener('click', () => {
+  const k = c.dataset.interest;
+  interests.has(k) ? interests.delete(k) : interests.add(k);
+  c.setAttribute('aria-pressed', String(interests.has(k)));
+  $('issueField').hidden = !interests.has('issue');
+}));
+document.querySelector('[data-read="consentCalls"]').onclick = (e) => speak(t('consentCalls'), null);
+
+$('signup').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const phoneRaw = $('phone').value.replace(/[^\d+]/g, '');
+  const phone = phoneRaw.startsWith('+') ? phoneRaw : (profile.region === 'IN' ? `+91${phoneRaw.slice(-10)}` : `+1${phoneRaw.slice(-10)}`);
+  if (!interests.size || phoneRaw.length < 10) { $('formError').textContent = t('needChoice'); $('formError').hidden = false; return; }
+  $('formError').hidden = true; $('submit').disabled = true;
+  try {
+    await api('/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+      name: $('name').value || undefined, phone, areaId: chosen?.id, interests: [...interests], issueText: $('issueText').value || undefined,
+      locale: lang, consentCalls: $('consentCalls').checked, consentSms: $('consentSms').checked, ref: ref || undefined,
+    }) });
+    const done = document.createElement('div'); done.className = 'done';
+    done.innerHTML = '<div class="tick"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="m5 12 5 5L20 7"/></svg></div><p class="display" style="font-size:24px;margin:0"></p>';
+    done.querySelector('p').textContent = t('thanks');
+    $('signup').replaceWith(done); speak(t('thanks'), null);
+  } catch (err) { $('formError').textContent = (err && err.message) || t('needChoice'); $('formError').hidden = false; $('submit').disabled = false; }
+});
+
+// Assistant
+function addMsg(text, who, src) { const d = document.createElement('div'); d.className = `msg ${who}`; d.textContent = text; if (src) { const s = document.createElement('span'); s.className = 'src'; s.textContent = `${t('source')}: ${src}`; d.append(s); } $('log').append(d); $('log').scrollTop = 1e9; }
+$('askOpen').onclick = () => { $('askDialog').showModal(); if (!$('log').children.length) addMsg(profile.assistantDisclosure[lang] || profile.assistantDisclosure.en, 'bot'); $('q').focus(); };
+$('askClose').onclick = () => $('askDialog').close();
+$('askForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const q = $('q').value.trim(); if (!q) return; $('q').value = ''; addMsg(q, 'me');
+  try { const a = await api('/assistant/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question: q, locale: lang }) }); addMsg(a.answer, 'bot', a.source && a.source.title); }
+  catch { addMsg('…', 'bot'); }
+});
+
+document.querySelectorAll('.langs button').forEach((b) => b.onclick = () => { lang = b.dataset.lang; speechSynthesis && speechSynthesis.cancel(); applyLang(); });
+$('areaSearch').addEventListener('input', renderAreas);
+
+(async () => {
+  profile = await api('');
+  document.title = profile.candidateName;
+  $('candidate').textContent = profile.candidateName;
+  $('tagline').textContent = profile.tagline || '';
+  $('demo').hidden = !profile.demo;
+  lang = profile.locales.includes('pa') && profile.region === 'IN' ? 'pa' : 'en';
+  document.querySelectorAll('.langs button').forEach((b) => { b.hidden = !profile.locales.includes(b.dataset.lang); });
+  areas = await api('/areas');
+  applyLang();
+})();
+</script>
+</body>
+</html>

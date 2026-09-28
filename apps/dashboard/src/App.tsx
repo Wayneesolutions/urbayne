@@ -1,0 +1,104 @@
+import { useEffect, useState } from 'react';
+import { Navigate, NavLink, Route, Routes, useNavigate, useParams, Outlet } from 'react-router-dom';
+import { api, session } from './api';
+import { Login } from './pages/Login';
+import { Overview } from './pages/Overview';
+import { Content } from './pages/Content';
+import { Contacts } from './pages/Contacts';
+import { Calls, RunDetail } from './pages/Calls';
+import { Share } from './pages/Share';
+import { Assistant } from './pages/Assistant';
+import { Team } from './pages/Team';
+import { Field } from './pages/Field';
+import { Events } from './pages/Events';
+import { Signs } from './pages/Signs';
+import { Finance } from './pages/Finance';
+
+export interface Tenant { id: string; region: 'IN' | 'CA'; campaignName: string; candidateName?: string; slug?: string; isDemo: boolean; seatCode: string; electionDate: string; pollCloseAt?: string; timeZone: string }
+
+export function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/" element={<RequireAuth><CampaignPicker /></RequireAuth>} />
+      <Route path="/c/:tenantId" element={<RequireAuth><Shell /></RequireAuth>}>
+        <Route index element={<Overview />} />
+        <Route path="content" element={<Content />} />
+        <Route path="contacts" element={<Contacts />} />
+        <Route path="calls" element={<Calls />} />
+        <Route path="calls/:runId" element={<RunDetail />} />
+        <Route path="share" element={<Share />} />
+        <Route path="assistant" element={<Assistant />} />
+        <Route path="team" element={<Team />} />
+        <Route path="field" element={<Field />} />
+        <Route path="events" element={<Events />} />
+        <Route path="signs" element={<Signs />} />
+        <Route path="finance" element={<Finance />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" />} />
+    </Routes>
+  );
+}
+
+function RequireAuth({ children }: { children: JSX.Element }) {
+  return session.token ? children : <Navigate to="/login" replace />;
+}
+
+function CampaignPicker() {
+  const [list, setList] = useState<{ tenant_id: string; campaign_name: string; region: string; role: string }[] | null>(null);
+  const nav = useNavigate();
+  useEffect(() => { api('/auth/me').then((m) => { setList(m.campaigns); if (m.campaigns.length === 1) nav(`/c/${m.campaigns[0].tenant_id}`, { replace: true }); }); }, [nav]);
+  if (!list) return <div className="centered muted">Loading…</div>;
+  return (
+    <div className="centered">
+      <div className="panel narrow">
+        <h1>Your campaigns</h1>
+        {list.length === 0 && <p className="muted">You are not part of a campaign yet. Ask the campaign owner for an invite.</p>}
+        <ul className="picker">{list.map((c) => (
+          <li key={c.tenant_id}><button onClick={() => nav(`/c/${c.tenant_id}`)}><strong>{c.campaign_name}</strong><span className="muted">{c.region === 'IN' ? 'India' : 'Canada'} · {c.role}</span></button></li>
+        ))}</ul>
+      </div>
+    </div>
+  );
+}
+
+export type ShellCtx = { tenant: Tenant; role: string; reload: () => void };
+
+function Shell() {
+  const { tenantId } = useParams();
+  const [ctx, setCtx] = useState<{ tenant: Tenant; role: string } | null>(null);
+  const nav = useNavigate();
+  const load = () => api(`/tenants/${tenantId}`).then(setCtx).catch(() => nav('/'));
+  useEffect(() => { load(); }, [tenantId]);
+  if (!ctx) return <div className="centered muted">Loading…</div>;
+  const t = ctx.tenant;
+  const link = (to: string, label: string) => <NavLink end={to === ''} to={`/c/${t.id}/${to}`}>{label}</NavLink>;
+  return (
+    <div className="shell">
+      <aside className="side">
+        <div className="side-top">
+          <strong className="camp">{t.candidateName ?? t.campaignName}</strong>
+          <span className="side-meta">{t.region === 'IN' ? 'India' : 'Canada'} · {t.seatCode}</span>
+          {t.isDemo && <span className="demo-pill">Demo campaign</span>}
+        </div>
+        <nav>
+          {link('', 'Overview')}
+          {link('content', 'Content & approvals')}
+          {link('contacts', 'Contacts')}
+          {link('calls', 'Calls & surveys')}
+          {link('share', 'Share links')}
+          {link('assistant', 'Assistant questions')}
+          <span className="nav-group">Ground game</span>
+          {link('field', t.region === 'IN' ? 'Booth workers' : 'Door-to-door')}
+          {link('events', 'Events & volunteers')}
+          {t.region === 'CA' && link('signs', 'Lawn signs')}
+          <span className="nav-group">Money and team</span>
+          {link('finance', t.region === 'IN' ? 'Expenditure' : 'Finance')}
+          {link('team', 'Team')}
+        </nav>
+        <button className="linklike side-out" onClick={() => { session.clear(); nav('/login'); }}>Sign out</button>
+      </aside>
+      <main className="work"><Outlet context={{ ...ctx, reload: load } satisfies ShellCtx} /></main>
+    </div>
+  );
+}
