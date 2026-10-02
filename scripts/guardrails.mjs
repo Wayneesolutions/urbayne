@@ -5,7 +5,7 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
 
 const banned = [/whatsapp/i, /baileys/i, /wweb/i, /venom-bot/i, /wppconnect/i, /wa-automate/i];
-const roots = ['apps', 'packages'];
+const roots = ['apps', 'packages', 'services'];
 const files = ['package.json'];
 for (const r of roots) for (const d of readdirSync(r)) {
   const f = path.join(r, d, 'package.json');
