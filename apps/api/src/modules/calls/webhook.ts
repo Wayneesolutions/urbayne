@@ -5,6 +5,7 @@ import { schema, withTenant } from '@cs/db';
 import { HttpError, ah } from '../../lib/http.js';
 import { recordOutcome } from './runner.js';
 import { recordIvrConsent } from '../privacy/consent.js';
+import { syncRunCost } from './cost.js';
 import type { Deps } from '../../types.js';
 
 /**
@@ -27,14 +28,21 @@ export function vapiWebhook(deps: Deps) {
     if (!tenantId || !interactionId) return res.json({ ignored: true });
     const answers = (msg.analysis?.structuredData?.answers ?? {}) as Record<string, string>;
     const optOut = Boolean(msg.analysis?.structuredData?.optOut);
+    // Vapi reports the total call cost in USD; keep it so it can be charged to the campaign spending register.
+    const rawCost = Number(msg.cost ?? msg.call?.cost);
+    const costUsdMicros = Number.isFinite(rawCost) && rawCost >= 0 ? Math.round(rawCost * 1_000_000) : null;
     await withTenant(deps.pool, tenantId, async (db) => {
       const [i] = await db.select().from(schema.interactions).where(eq(schema.interactions.id, interactionId));
       if (!i || i.status !== 'in_progress') return;
       const ended = msg.endedReason === 'customer-did-not-answer' ? 'no_answer' : 'completed';
       await db.update(schema.interactions).set({
         status: ended, endedAt: new Date(), durationSec: Math.round(Number(msg.durationSeconds ?? 0)),
-        transcript: typeof msg.transcript === 'string' ? msg.transcript : null, optedOut: optOut, updatedAt: new Date(),
+        transcript: typeof msg.transcript === 'string' ? msg.transcript : null, optedOut: optOut, costUsdMicros, updatedAt: new Date(),
       }).where(eq(schema.interactions.id, i.id));
+      if (costUsdMicros && i.runId) {
+        const [tenant] = await db.select().from(schema.tenants).where(eq(schema.tenants.id, tenantId));
+        if (tenant) await syncRunCost(db, tenant, i.runId, deps.env);
+      }
       if (ended === 'completed' && i.contactId) {
         await recordOutcome(db, tenantId, i.id, i.contactId, answers, optOut);
         // Consent given by pressing a key on the call (only when the provider says which consent text was played).

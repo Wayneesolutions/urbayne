@@ -171,6 +171,8 @@ export const interactions = pgTable('interactions', {
   aiDisclosed: boolean('ai_disclosed').notNull().default(false),
   optedOut: boolean('opted_out').notNull().default(false),
   followUp: boolean('follow_up').notNull().default(false),
+  /** Provider-reported cost in millionths of a US dollar (null until the provider reports it). */
+  costUsdMicros: bigint('cost_usd_micros', { mode: 'number' }),
   ...stamps,
 });
 
