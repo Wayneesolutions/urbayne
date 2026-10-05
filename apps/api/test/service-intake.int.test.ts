@@ -130,6 +130,17 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
     });
   });
 
+  describe('the resident page', () => {
+    it('is served with a script nonce, and unknown offices still load the page (it shows 404 itself)', async () => {
+      const r = await request(app).get('/help/intake-test').expect(200);
+      const nonce = /script-src 'nonce-([^']+)'/.exec(r.headers['content-security-policy']!)?.[1];
+      expect(nonce).toBeTruthy();
+      expect(r.text).toContain(`<script nonce="${nonce}">`);
+      expect(r.headers['content-security-policy']).not.toMatch(/script-src[^;]*unsafe-inline/);
+      expect(r.text).toContain('data-t="what"');
+    });
+  });
+
   describe('inbound texts (Twilio)', () => {
     const from = '+919811300001';
     it('rejects anything not signed by Twilio', async () => {

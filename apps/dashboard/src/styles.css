@@ -150,3 +150,34 @@ kbd { display: inline-grid; place-items: center; min-width: 24px; height: 24px; 
 .table td.actions { display: table-cell; white-space: nowrap; }
 .table td.actions > * + * { margin-left: 6px; }
 .table td:first-child { white-space: nowrap; }
+
+/* constituent service */
+.badge.tk-new { background: #E8ECFA; color: #34408C; }
+.badge.tk-assigned, .badge.tk-in_progress { background: #FFF1CC; color: #7A5300; }
+.badge.tk-resolved, .badge.tk-closed { background: #E3F2EA; color: var(--leaf); }
+.badge.tk-rejected { background: #FBE7E5; color: var(--rust); }
+.badge.pr-urgent, .badge.pr-high { background: #FBE7E5; color: var(--rust); margin-left: 6px; }
+.badge.pr-low { margin-left: 6px; }
+.clickable { cursor: pointer; }
+.clickable:hover td { background: #FAFBFD; }
+.small { font-size: 14px; }
+.ok { color: var(--leaf); margin: 8px 0; }
+.stack { display: grid; gap: 12px; margin: 12px 0; }
+.row-wrap { display: flex; gap: 12px; flex-wrap: wrap; }
+.row-wrap label { flex: 1 1 160px; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 12px 0; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; }
+.timeline { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 10px; }
+.timeline li { border-left: 3px solid var(--line); padding-left: 12px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.cards .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; display: grid; gap: 4px; }
+.cards .card strong { font-size: 28px; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+.trend { display: flex; gap: 14px; align-items: flex-end; margin: 8px 0; }
+.trend-col { display: grid; justify-items: center; gap: 2px; flex: 1; }
+.trend .bars { height: 90px; display: flex; gap: 4px; align-items: flex-end; }
+.trend .bar { width: 16px; border-radius: 4px 4px 0 0; min-height: 2px; }
+.trend .bar.in { background: #B9C1EC; }
+.trend .bar.done { background: var(--leaf); }
+ul.plain { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 6px; }

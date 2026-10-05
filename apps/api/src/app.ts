@@ -76,6 +76,8 @@ export function createApp(init: DepsInit) {
   app.use('/webhooks', vapiWebhook(deps));
   app.use('/webhooks/sms', inboundSmsRoutes(deps));
   app.get('/v/:slug', voterPage(path.join(here, 'public', 'voter.html')));
+  // Residents' page for constituent service: report a problem and check its progress.
+  app.get('/help/:slug', voterPage(path.join(here, 'public', 'help.html')));
   // Booth worker / canvasser app (installable, works offline).
   app.use('/w', strictCsp, express.static(path.join(here, 'public', 'worker'), { index: 'index.html' }));
 

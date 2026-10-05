@@ -138,6 +138,17 @@ The adapter and the end-of-call handling were checked against Vapi's public docs
 
 See [docs/security.md](docs/security.md): findings and fixes from the review, secret rotation steps, the staff support-access policy, and the brief for an external penetration test (not done yet: it needs an outside tester). Highlights: dependency vulnerabilities fixed (`pnpm audit` is clean and CI fails on high findings), the database app-role password is set at migration time and required in production, tokens are HS256-only with secret rotation (`*_PREVIOUS`), staff access to a campaign needs a stated reason (`X-Support-Reason`), is read-only and is logged, and every response carries security headers with a CSP (nonce on the voter page).
 
+## Phase 3, Tool 8: constituent service
+
+For sitting MLAs, MPs and councillors (create the tenant with `kind: "office"`: no election-date deletion, it runs all year) and for campaigns that win.
+
+- **Intake**: public page `/help/<slug>` (Punjabi, Hindi, English; report a problem, check progress with the request number and the last 4 digits of the phone), texts to an office number (Twilio signature checked; STOP and `STATUS T-0042` understood; JSON webhook with a shared secret for India providers), the voice helpline (see `docs/vapi-setup.md`, section 6), and the office team in the dashboard.
+- **Handling**: every request gets a number (T-0001, ...), a category (chosen or guessed from English, Hinglish, Punjabi and Hindi words), an area, and goes to the team member set for that area or the nearest area above it. Steps: new, assigned, in progress, resolved, closed, or not accepted; resolving or rejecting needs a note; service staff work on their own or unassigned requests, owner and manager on all.
+- **Texts to the resident**: an acknowledgement within seconds and a status update when the team takes it up, resolves it or does not accept it. Only to people who agreed to texts about their request and have not opted out; a number on the do-not-contact list is still helped but never texted. In India the text is a registered DLT template (`ticket_ack`, `ticket_status`, see the DLT section) and nothing is sent without one; the timeline tells staff what to register.
+- **Reports** (`/api/t/:id/service/reports`): per month, received, resolved, average days, resolved within the service level, overdue, acknowledgement speed, by category, by village or ward, by channel, six-month trend. "Work done" CSV export (no names, phone numbers or request text).
+- **Retention**: `ticketRetentionDays` (30 to 3650) removes names, request text, notes and the phone link from requests closed that long ago, and deletes residents who appear nowhere else; the figures stay. Set per office by the owner; the number is a legal decision. The election-date deletion and erasure of one person also remove ticket details.
+- **Billing**: platform staff set a subscription per office (`PUT /api/admin/tenants/:id/subscription`: monthly price, texts included, rate for extra texts, optional tax rate) and run `POST /api/admin/invoices/generate {month}` (safe to repeat). **No payment provider is connected**: payments are marked by hand (`.../paid`). Tax is only added when a rate is set: confirm GST / invoice format with your accountant first.
+
 ## Known limits (Phase 1)
 
 - Read-aloud uses the phone's built-in voice in the demo; production should ship pre-recorded Punjabi and Hindi audio.
