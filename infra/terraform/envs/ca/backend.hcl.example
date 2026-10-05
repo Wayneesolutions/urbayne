@@ -1,0 +1,7 @@
+# Create the bucket and lock table in the SAME AWS region first (private, versioned, encrypted). Then:
+#   terraform init -backend-config=backend.hcl
+bucket         = "campaign-suite-tfstate-ca-central-1-ACCOUNT"
+key            = "campaign-suite/ca/terraform.tfstate"
+region         = "ca-central-1"
+encrypt        = true
+dynamodb_table = "campaign-suite-tflock"
