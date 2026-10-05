@@ -44,7 +44,7 @@ export function contentRoutes(deps: Deps) {
       geoAreaId: z.string().uuid().optional(),
       survey: surveySchema.optional(),
       /** Which platform message this SMS template is for (reminders need a registered 'shift_reminder' template in India). */
-      templateKey: z.enum(['shift_reminder']).optional(),
+      templateKey: z.enum(['shift_reminder', 'ticket_ack', 'ticket_status']).optional(),
     }).parse(req.body);
     if (b.survey && b.kind !== 'script') throw new HttpError(400, 'SURVEY_ONLY_ON_SCRIPTS');
     if (b.templateKey && b.kind !== 'sms_template') throw new HttpError(400, 'TEMPLATE_KEY_ONLY_ON_SMS_TEMPLATES');

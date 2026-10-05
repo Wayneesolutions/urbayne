@@ -7,6 +7,7 @@ import { recordOutcome } from './runner.js';
 import { recordIvrConsent } from '../privacy/consent.js';
 import { reconcileCallCost, syncRunCost } from './cost.js';
 import { parseEndOfCall } from './vapi-report.js';
+import { handleHelplineReport } from '../service/inbound.js';
 import type { Deps } from '../../types.js';
 
 /**
@@ -24,6 +25,8 @@ export function vapiWebhook(deps: Deps) {
     }
     const msg = req.body?.message;
     if (msg?.type !== 'end-of-call-report') return res.json({ ignored: true });
+    // A call to a service helpline number (inbound) becomes a service ticket, not a campaign call.
+    if (await handleHelplineReport(deps, msg)) return res.json({ ok: true });
     const head = parseEndOfCall(msg);
     const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!head.tenantId || !head.interactionId || !UUID.test(head.tenantId) || !UUID.test(head.interactionId)) return res.json({ ignored: true });

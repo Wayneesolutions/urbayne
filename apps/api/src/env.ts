@@ -22,6 +22,8 @@ const schema = z.object({
   PUBLIC_BASE_URL: z.string().url().default('http://localhost:4000'),
   // Live providers (optional; demo tenants never use them).
   VAPI_API_KEY: z.string().optional(),
+  // Inbound texts from providers other than Twilio (India) call /webhooks/sms/inbound with this shared secret.
+  SMS_INBOUND_SECRET: z.string().min(16).optional(),
   VAPI_PHONE_NUMBER_ID: z.string().optional(),
   VAPI_ASSISTANT_ID: z.string().optional(),
   VAPI_WEBHOOK_SECRET: z.string().min(16).optional(),

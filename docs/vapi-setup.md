@@ -80,3 +80,20 @@ pnpm --filter @cs/api vapi:verify --call +91XXXXXXXXXX
 It reads your phone number and assistant, warns about anything missing (no `{{survey}}` in the prompt, keypad off, recording on), places one test call with a two-question survey, waits for it to end, and prints how the platform would record it: status, answers, cost, whether a recording exists. It then deletes the test call at Vapi (which also proves retention deletion works with your key). Answer one question by keypad and one by voice, then say "stop" on a second run.
 
 Things it cannot prove for you: calling-hours rules and the AI-disclosure wording per language (legal sign-off), and your telecom provider's rules for automated calls in India (the 140 series) and Canada (CRTC).
+
+## 6. Voice helpline for constituent service (inbound calls)
+
+Residents call a number and an AI assistant, speaking Punjabi, Hindi or English, takes their request. The call becomes a ticket.
+
+**Set up** (once per office, by Wayne E Solutions):
+1. In Vapi, import or buy a phone number for the office and create a **separate helpline assistant** (not the campaign-call assistant). Point the number's inbound calls at that assistant.
+2. Put the platform's webhook on the assistant's server settings (`<PUBLIC_BASE_URL>/webhooks/vapi`, with `VAPI_WEBHOOK_SECRET`), so the end-of-call report reaches this deployment.
+3. Register the number for the office: `POST /api/admin/service-numbers` with `{ "tenantId": "...", "kind": "voice", "identifier": "<Vapi phone number id>", "provider": "vapi" }` (platform staff only). A number belongs to exactly one office.
+4. Give the helpline assistant a structured-data plan that returns:
+   `{ "category": "water|roads|electricity|sanitation|health|welfare|education|safety|other", "issue": "one or two sentences", "areaText": "village or ward as said", "areaCode": "", "name": "", "language": "pa|hi|en", "smsConsent": true|false }`
+
+**Assistant script requirements** (counsel to confirm the exact wording): the first sentence says it is an AI assistant; it asks for the problem, the village or ward, and the caller's name; it asks, as a separate question, whether the caller wants **text messages about this request** (that yes or no is `smsConsent`; without a clear yes nothing is texted); it says the number to quote is sent by text if they agreed; it never asks for money or an Aadhaar / ID number.
+
+**What the platform does with the report**: only reports of **inbound** calls to a registered helpline number become tickets (campaign calls on the same number are not touched). The ticket keeps the assistant's summary of the issue, never the transcript. The caller's number becomes a contact with a consent to texts about this request (evidence: the call id) if `smsConsent` is true; a number on the do-not-contact list is still helped, never texted. The call itself is recorded with its cost, so it appears in the provider cost dashboard. A call with nothing said (or under 5 characters of issue) makes no ticket; the same call reported twice makes one ticket.
+
+**Not verified with a real call**, like the campaign-call adapter: place a test call to the helpline and check the ticket appears.

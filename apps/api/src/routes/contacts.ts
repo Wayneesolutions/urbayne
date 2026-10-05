@@ -11,7 +11,7 @@ import { addConsents } from '../modules/privacy/consent.js';
 import type { Deps } from '../types.js';
 
 const consentSchema = z.object({
-  purpose: z.enum(['info', 'survey', 'reminder', 'donation']),
+  purpose: z.enum(['info', 'survey', 'reminder', 'donation', 'service']),
   channel: z.enum(['voice', 'sms', 'ai_answer']),
   textVersion: z.string().min(1),
   locale: z.string(),

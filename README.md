@@ -138,6 +138,26 @@ The adapter and the end-of-call handling were checked against Vapi's public docs
 
 See [docs/security.md](docs/security.md): findings and fixes from the review, secret rotation steps, the staff support-access policy, and the brief for an external penetration test (not done yet: it needs an outside tester). Highlights: dependency vulnerabilities fixed (`pnpm audit` is clean and CI fails on high findings), the database app-role password is set at migration time and required in production, tokens are HS256-only with secret rotation (`*_PREVIOUS`), staff access to a campaign needs a stated reason (`X-Support-Reason`), is read-only and is logged, and every response carries security headers with a CSP (nonce on the voter page).
 
+## Phase 3, Tool 8: constituent service
+
+For sitting MLAs, MPs and councillors (create the tenant with `kind: "office"`: no election-date deletion, it runs all year) and for campaigns that win.
+
+- **Intake**: public page `/help/<slug>` (Punjabi, Hindi, English; report a problem, check progress with the request number and the last 4 digits of the phone), texts to an office number (Twilio signature checked; STOP and `STATUS T-0042` understood; JSON webhook with a shared secret for India providers), the voice helpline (see `docs/vapi-setup.md`, section 6), and the office team in the dashboard.
+- **Handling**: every request gets a number (T-0001, ...), a category (chosen or guessed from English, Hinglish, Punjabi and Hindi words), an area, and goes to the team member set for that area or the nearest area above it. Steps: new, assigned, in progress, resolved, closed, or not accepted; resolving or rejecting needs a note; service staff work on their own or unassigned requests, owner and manager on all.
+- **Texts to the resident**: an acknowledgement within seconds and a status update when the team takes it up, resolves it or does not accept it. Only to people who agreed to texts about their request and have not opted out; a number on the do-not-contact list is still helped but never texted. In India the text is a registered DLT template (`ticket_ack`, `ticket_status`, see the DLT section) and nothing is sent without one; the timeline tells staff what to register.
+- **Reports** (`/api/t/:id/service/reports`): per month, received, resolved, average days, resolved within the service level, overdue, acknowledgement speed, by category, by village or ward, by channel, six-month trend. "Work done" CSV export (no names, phone numbers or request text).
+- **Retention**: `ticketRetentionDays` (30 to 3650) removes names, request text, notes and the phone link from requests closed that long ago, and deletes residents who appear nowhere else; the figures stay. Set per office by the owner; the number is a legal decision. The election-date deletion and erasure of one person also remove ticket details.
+- **Billing**: platform staff set a subscription per office (`PUT /api/admin/tenants/:id/subscription`: monthly price, texts included, rate for extra texts, optional tax rate) and run `POST /api/admin/invoices/generate {month}` (safe to repeat). **No payment provider is connected**: payments are marked by hand (`.../paid`). Tax is only added when a rate is set: confirm GST / invoice format with your accountant first.
+
+## Phase 3, Tool 7: poll day and counting
+
+- **Agents** report from their phone at `/r/` (installable page, works offline: numbers wait on the phone and are sent when the signal returns, safe to send twice). A booth agent sees only their own stations. Agents without a smartphone can text `<station code> <number>` to the office number (see the SMS formats in `modules/results/sms.ts`).
+- **Poll day**: cumulative turnout per station, latest `as_of` wins. A report is flagged `CHANGED` (same moment, different number), `DECREASED`, `BELOW_LATER`, `OVER_ELECTORS` or `EXCEEDS_ELECTORS`; flagged numbers appear under "Needs a look" for a manager to review.
+- **Counting**: votes by candidate per round or per station, same flags and review.
+- **Labels**: everything entered by agents is shown as "Campaign reported (not official)". Official figures are typed in (or uploaded as CSV) by the team with a source note and are shown separately as official. **Nothing connects to any election authority system.**
+- **Archive**: `POST /results/archive` locks reporting for the campaign and stores a snapshot; `export.csv` downloads everything.
+- **Load test**: `scripts/load-test-results.mjs` (seeds its own campaigns, hits the real HTTP API, checks nothing is lost or stored twice, then cleans up). Result on a 4-core AMD A6 laptop that also ran Postgres, Redis and the load generator: correctness held at every rate (no number lost, none stored twice), ~15 requests/s kept p50 54 ms but p95 about 1 s; beyond ~20 requests/s (about 45 numbers/s) requests queue and take seconds. **The 40 reports/s expected and 400/s "10x" targets were NOT demonstrated on this hardware.** Per request cost is ~3 queries per report; production needs several API tasks and a real database instance, and the test must be re-run there before poll day.
+
 ## Known limits (Phase 1)
 
 - Read-aloud uses the phone's built-in voice in the demo; production should ship pre-recorded Punjabi and Hindi audio.
@@ -166,4 +186,4 @@ Demo logins (seeded): India worker `+919999900002`, Canada canvasser `+120455500
 
 ## Next: Phase 3
 
-Poll day and counting / election night results dashboard, constituent service platform for winners, Redis/BullMQ workers, pre-recorded audio, and production deployment per region.
+Pre-recorded audio, and production deployment per region.

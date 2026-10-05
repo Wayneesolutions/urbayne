@@ -1,0 +1,10 @@
+{
+  "name": "Results reporter",
+  "short_name": "Results",
+  "start_url": "/r/",
+  "scope": "/r/",
+  "display": "standalone",
+  "background_color": "#F6F7FB",
+  "theme_color": "#26203F",
+  "icons": [{ "src": "/r/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

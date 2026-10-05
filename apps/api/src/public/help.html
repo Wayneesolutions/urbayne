@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="pa">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Help</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700&family=Baloo+Paaji+2:wght@500;700&family=Noto+Sans:wght@400;600&family=Noto+Sans+Gurmukhi:wght@400;600&family=Noto+Sans+Devanagari:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root { --ink: #26203F; --ink-soft: #5B5575; --paper: #F6F7FB; --card: #FFFFFF; --marigold: #E8A317; --marigold-deep: #B97C00; --leaf: #2F7D5B; --rust: #B2432F; --line: #E3E4EE; --radius-big: 28px; --radius: 16px; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--paper); color: var(--ink); font: 18px/1.55 "Noto Sans", "Noto Sans Gurmukhi", "Noto Sans Devanagari", system-ui, sans-serif; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+  body[data-lang="pa"] { font-family: "Noto Sans Gurmukhi", "Noto Sans", sans-serif; }
+  body[data-lang="hi"] { font-family: "Noto Sans Devanagari", "Noto Sans", sans-serif; }
+  .display { font-family: "Baloo 2", sans-serif; font-weight: 700; }
+  body[data-lang="pa"] .display { font-family: "Baloo Paaji 2", "Baloo 2", sans-serif; }
+  main { max-width: 520px; margin: 0 auto; padding: 16px 16px 80px; }
+  button, input, textarea, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--marigold-deep); outline-offset: 3px; }
+  .demo { background: #FFF3D6; color: #6B4A00; border-radius: 12px; padding: 8px 14px; font-size: 15px; margin-bottom: 12px; }
+  .langs { display: flex; gap: 8px; margin-bottom: 20px; }
+  .langs button { flex: 1; min-height: 52px; border-radius: 999px; border: 2px solid var(--line); background: var(--card); font-size: 18px; }
+  .langs button[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: #fff; }
+  h1 { margin: 4px 4px 4px; font-size: 36px; line-height: 1.15; }
+  .sub { margin: 0 4px 20px; color: var(--ink-soft); }
+  section.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-big); padding: 20px; margin-bottom: 16px; }
+  section.card h2 { margin: 0 0 12px; font-size: 24px; line-height: 1.2; }
+  .cats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .cat { min-height: 60px; border-radius: var(--radius); border: 2px solid var(--line); background: var(--paper); padding: 8px 12px; text-align: left; line-height: 1.25; }
+  .cat[aria-pressed="true"] { border-color: var(--leaf); background: #E8F4EE; font-weight: 600; }
+  label.field { display: block; margin-top: 14px; }
+  label.field span { display: block; font-weight: 600; margin-bottom: 4px; }
+  .in { width: 100%; min-height: 54px; border: 2px solid var(--line); border-radius: var(--radius); padding: 10px 14px; background: var(--paper); }
+  textarea.in { min-height: 110px; resize: vertical; }
+  .consent { display: flex; gap: 12px; align-items: flex-start; margin-top: 16px; font-size: 16px; }
+  .consent input { width: 28px; height: 28px; flex: none; margin-top: 2px; }
+  .primary { width: 100%; min-height: 64px; margin-top: 20px; border: 0; border-radius: var(--radius-big); background: var(--marigold); font-weight: 700; font-size: 20px; }
+  .primary:disabled { opacity: .5; }
+  .secondary { width: 100%; min-height: 54px; margin-top: 12px; border: 2px solid var(--ink); border-radius: var(--radius-big); background: transparent; font-weight: 600; }
+  .error { color: var(--rust); margin: 12px 0 0; }
+  .done { text-align: center; }
+  .done .tick { width: 72px; height: 72px; border-radius: 50%; background: var(--leaf); display: grid; place-items: center; margin: 0 auto 12px; }
+  .refno { font: 700 40px/1.1 "Baloo 2", sans-serif; letter-spacing: 1px; background: var(--paper); border-radius: var(--radius); padding: 14px; margin: 12px 0; }
+  .line { border-left: 3px solid var(--line); padding: 2px 0 2px 14px; margin: 10px 0; }
+  .line small { color: var(--ink-soft); display: block; }
+  .hp { position: absolute; left: -9999px; height: 0; width: 0; overflow: hidden; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body data-lang="pa">
+<main>
+  <div id="demo" class="demo" hidden></div>
+  <div class="langs" role="group" aria-label="Language">
+    <button data-lang="pa" lang="pa">ਪੰਜਾਬੀ</button>
+    <button data-lang="hi" lang="hi">हिंदी</button>
+    <button data-lang="en" lang="en">English</button>
+  </div>
+  <h1 class="display" id="office"></h1>
+  <p class="sub" id="sub"></p>
+
+  <section class="card" id="formCard">
+    <h2 class="display" data-t="what"></h2>
+    <div class="cats" id="cats" role="group"></div>
+    <form id="form" novalidate>
+      <label class="field"><span data-t="describe"></span><textarea class="in" id="title" maxlength="200"></textarea></label>
+      <label class="field"><span data-t="area"></span><select class="in" id="area"></select></label>
+      <label class="field"><span data-t="name"></span><input class="in" id="name" autocomplete="name" maxlength="120"></label>
+      <label class="field"><span data-t="phone"></span><input class="in" id="phone" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="+91…"></label>
+      <div class="consent"><input type="checkbox" id="consent"><label for="consent" id="consentText"></label></div>
+      <div class="hp" aria-hidden="true"><label>Website <input id="website" tabindex="-1" autocomplete="off"></label></div>
+      <p class="error" id="err" role="alert" hidden></p>
+      <button class="primary" id="send" type="submit" data-t="send"></button>
+    </form>
+  </section>
+
+  <section class="card done" id="doneCard" hidden>
+    <div class="tick"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="m5 12 5 5L20 7"/></svg></div>
+    <p id="doneMsg"></p>
+    <div class="refno" id="refno"></div>
+    <button class="secondary" id="again" data-t="another"></button>
+  </section>
+
+  <section class="card" id="checkCard">
+    <h2 class="display" data-t="check"></h2>
+    <label class="field"><span data-t="refLabel"></span><input class="in" id="refIn" maxlength="12" autocapitalize="characters" placeholder="T-0042"></label>
+    <label class="field"><span data-t="last4"></span><input class="in" id="last4" inputmode="numeric" maxlength="4"></label>
+    <p class="error" id="checkErr" role="alert" hidden></p>
+    <button class="secondary" id="checkBtn" data-t="show"></button>
+    <div id="status" hidden></div>
+  </section>
+</main>
+
+<script>
+const T = {
+  pa: { sub: 'ਆਪਣੀ ਸਮੱਸਿਆ ਦੱਸੋ। ਅਸੀਂ ਇਸਨੂੰ ਦਰਜ ਕਰਕੇ ਸਬੰਧਤ ਵਿਅਕਤੀ ਤੱਕ ਪਹੁੰਚਾਵਾਂਗੇ।', what: 'ਸਮੱਸਿਆ ਕਿਸ ਬਾਰੇ ਹੈ?', describe: 'ਕੀ ਸਮੱਸਿਆ ਹੈ? (ਥੋੜ੍ਹੇ ਸ਼ਬਦਾਂ ਵਿੱਚ)', area: 'ਪਿੰਡ ਜਾਂ ਮੁਹੱਲਾ', name: 'ਤੁਹਾਡਾ ਨਾਮ (ਜੇ ਚਾਹੋ)', phone: 'ਮੋਬਾਈਲ ਨੰਬਰ (ਜੇ ਚਾਹੋ)', send: 'ਭੇਜੋ', another: 'ਇੱਕ ਹੋਰ ਸਮੱਸਿਆ ਦੱਸੋ', check: 'ਆਪਣੀ ਸ਼ਿਕਾਇਤ ਦੀ ਹਾਲਤ ਵੇਖੋ', refLabel: 'ਸ਼ਿਕਾਇਤ ਨੰਬਰ', last4: 'ਮੋਬਾਈਲ ਦੇ ਆਖ਼ਰੀ 4 ਅੰਕ', show: 'ਵੇਖੋ', pick: '– ਚੁਣੋ –', needText: 'ਕਿਰਪਾ ਕਰਕੇ ਸਮੱਸਿਆ ਲਿਖੋ।', needPhone: 'ਟੈਕਸਟ ਲਈ ਮੋਬਾਈਲ ਨੰਬਰ ਲਿਖੋ।', fail: 'ਹੁਣ ਨਹੀਂ ਹੋ ਸਕਿਆ। ਥੋੜ੍ਹੀ ਦੇਰ ਬਾਅਦ ਕੋਸ਼ਿਸ਼ ਕਰੋ।', notFound: 'ਇਹ ਨੰਬਰ ਅਤੇ ਅੰਕ ਮੇਲ ਨਹੀਂ ਖਾਂਦੇ।', received: 'ਮਿਲ ਗਈ', demo: 'ਇਹ ਡੈਮੋ ਹੈ। ਕੋਈ ਅਸਲ ਸ਼ਿਕਾਇਤ ਦਰਜ ਨਹੀਂ ਹੁੰਦੀ।' },
+  hi: { sub: 'अपनी समस्या बताएं। हम इसे दर्ज करके संबंधित व्यक्ति तक पहुँचाएँगे।', what: 'समस्या किस बारे में है?', describe: 'क्या समस्या है? (थोड़े शब्दों में)', area: 'गाँव या मोहल्ला', name: 'आपका नाम (अगर चाहें)', phone: 'मोबाइल नंबर (अगर चाहें)', send: 'भेजें', another: 'एक और समस्या बताएं', check: 'अपनी शिकायत की स्थिति देखें', refLabel: 'शिकायत नंबर', last4: 'मोबाइल के आखिरी 4 अंक', show: 'देखें', pick: '– चुनें –', needText: 'कृपया समस्या लिखें।', needPhone: 'टेक्स्ट के लिए मोबाइल नंबर लिखें।', fail: 'अभी नहीं हो सका। थोड़ी देर बाद कोशिश करें।', notFound: 'यह नंबर और अंक मेल नहीं खाते।', received: 'मिल गई', demo: 'यह डेमो है। कोई असली शिकायत दर्ज नहीं होती।' },
+  en: { sub: 'Tell us the problem. We will record it and pass it to the right person.', what: 'What is it about?', describe: 'What is the problem? (a few words)', area: 'Village or neighbourhood', name: 'Your name (optional)', phone: 'Mobile number (optional)', send: 'Send', another: 'Report another problem', check: 'Check the progress of your request', refLabel: 'Request number', last4: 'Last 4 digits of your mobile', show: 'Show', pick: '– choose –', needText: 'Please describe the problem.', needPhone: 'Enter your mobile number to get texts.', fail: 'Could not send right now. Please try again in a little while.', notFound: 'That number and those digits do not match.', received: 'received', demo: 'This is a demo. No real request is recorded.' },
+};
+const slug = location.pathname.split('/').filter(Boolean)[1];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let lang = localStorage.getItem('help.lang') || 'pa', cfg = null, category = null;
+const t = (k) => (T[lang] || T.en)[k] || T.en[k];
+
+async function call(path, opts) {
+  const r = await fetch(`/api/public/${slug}${path}`, opts);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.error || 'error'), { status: r.status, body: j });
+  return j;
+}
+
+function apply() {
+  document.body.dataset.lang = lang; document.documentElement.lang = lang;
+  document.querySelectorAll('[data-t]').forEach((el) => { el.textContent = t(el.dataset.t); });
+  document.querySelectorAll('.langs button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lang === lang)));
+  $('sub').textContent = t('sub');
+  if (!cfg) return;
+  $('office').textContent = cfg.office;
+  document.title = cfg.office;
+  $('consentText').textContent = cfg.consentText[lang] || cfg.consentText.en;
+  $('cats').innerHTML = cfg.categories.map((c) => `<button type="button" class="cat" data-cat="${c.key}" aria-pressed="${category === c.key}">${esc(c[lang] || c.en)}</button>`).join('');
+  const nm = (a) => (lang === 'pa' && a.namePa) || (lang === 'hi' && a.nameHi) || a.nameEn;
+  const cur = $('area').value;
+  $('area').innerHTML = `<option value="">${esc(t('pick'))}</option>` + cfg.areas.map((a) => `<option value="${a.id}">${esc(nm(a))}</option>`).join('');
+  $('area').value = cur;
+}
+
+document.querySelectorAll('.langs button').forEach((b) => { b.onclick = () => { lang = b.dataset.lang; localStorage.setItem('help.lang', lang); apply(); }; });
+$('cats').onclick = (e) => { const b = e.target.closest('.cat'); if (!b) return; category = category === b.dataset.cat ? null : b.dataset.cat; apply(); };
+
+function showErr(el, msg) { el.textContent = msg; el.hidden = false; }
+
+$('form').onsubmit = async (e) => {
+  e.preventDefault(); $('err').hidden = true;
+  const title = $('title').value.trim(), phone = $('phone').value.trim(), consent = $('consent').checked;
+  if (title.length < 3) return showErr($('err'), t('needText'));
+  if (consent && !phone) return showErr($('err'), t('needPhone'));
+  $('send').disabled = true;
+  try {
+    const body = { title, language: lang, website: $('website').value || undefined };
+    if (category) body.category = category;
+    if ($('area').value) body.areaId = $('area').value;
+    if ($('name').value.trim()) body.name = $('name').value.trim();
+    if (phone) { body.phone = phone; body.smsConsent = consent; }
+    const r = await call('/tickets', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    $('doneMsg').textContent = r.message; $('refno').textContent = r.ref;
+    $('formCard').hidden = true; $('doneCard').hidden = false;
+    $('refIn').value = r.ref;
+    $('form').reset(); category = null; apply();
+  } catch (x) {
+    showErr($('err'), x.body && x.body.message ? x.body.message : t('fail'));
+  } finally { $('send').disabled = false; }
+};
+$('again').onclick = () => { $('doneCard').hidden = true; $('formCard').hidden = false; };
+
+$('checkBtn').onclick = async () => {
+  $('checkErr').hidden = true; $('status').hidden = true;
+  try {
+    const r = await call(`/tickets/${encodeURIComponent($('refIn').value.trim())}?last4=${encodeURIComponent($('last4').value.trim())}`);
+    const when = (d) => new Date(d).toLocaleString(lang === 'en' ? 'en-IN' : lang === 'hi' ? 'hi-IN' : 'pa-IN', { dateStyle: 'medium', timeStyle: 'short' });
+    $('status').innerHTML = `<p><strong>${esc(r.ref)}</strong> · ${esc(r.category[lang] || r.category.en)} · <strong>${esc(r.statusText)}</strong></p>` +
+      r.timeline.map((l) => `<div class="line">${esc(l.text || '')}<small>${esc(when(l.at))}</small></div>`).join('');
+    $('status').hidden = false;
+  } catch (x) { showErr($('checkErr'), t('notFound')); }
+};
+
+(async () => {
+  try { cfg = await call('/service'); } catch (x) { $('office').textContent = '404'; return; }
+  const p = await call('').catch(() => null);
+  if (p && p.demo) { $('demo').hidden = false; $('demo').textContent = t('demo'); }
+  apply();
+})();
+apply();
+</script>
+</body>
+</html>
