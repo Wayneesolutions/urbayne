@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { schema, withTenant, EVENT_KINDS } from '@cs/db';
-import { smsFor } from '@cs/channels';
+import { smsFor, fillDltTemplate, DLT_SUGGESTED_TEMPLATES } from '@cs/channels';
 import { HttpError, ah } from '../../lib/http.js';
 import { decrypt } from '../../lib/crypto.js';
 import { channelEnv, now } from '../../lib/util.js';
@@ -171,16 +171,34 @@ export async function sendShiftReminders(deps: Deps, t: TenantRow, shiftId: stri
     const consented = rows.length ? await db.select().from(schema.consents).where(and(
       inArray(schema.consents.contactId, rows.map((x) => x.c.id)), eq(schema.consents.channel, 'sms'), eq(schema.consents.purpose, 'reminder'), isNull(schema.consents.withdrawnAt),
     )) : [];
-    let sent = 0, skipped = 0;
+    let sent = 0, skipped = 0, failed = 0;
     const when = shift.startsAt.toLocaleString(t.region === 'IN' ? 'en-IN' : 'en-CA', { timeZone: t.timeZone, weekday: 'short', hour: 'numeric', minute: '2-digit' });
+
+    // India live SMS: the text must be the registered DLT template with only the {#var#} slots filled.
+    let body = `${t.campaignName}: reminder, ${shift.title}, ${when}. Reply STOP to opt out.`;
+    let template: { id: string; body: string } | null = null;
+    if (t.region === 'IN' && !sms.simulated) {
+      const [tpl] = await db.select().from(schema.contentItems).where(and(
+        eq(schema.contentItems.kind, 'sms_template'), eq(schema.contentItems.templateKey, 'shift_reminder'),
+        eq(schema.contentItems.dltStatus, 'registered'), inArray(schema.contentItems.status, ['approved', 'certified']),
+      ));
+      if (!tpl?.dltTemplateId) {
+        throw new HttpError(422, 'DLT_TEMPLATE_REQUIRED', `Register an approved SMS template with templateKey "shift_reminder" on the DLT portal first. Suggested text: ${DLT_SUGGESTED_TEMPLATES.shift_reminder.body}`);
+      }
+      try { body = fillDltTemplate(tpl.body, [t.campaignName, shift.title, when]); }
+      catch (e) { throw new HttpError(422, 'DLT_VARIABLE_PROBLEM', (e as Error).message); }
+      template = { id: tpl.dltTemplateId, body: tpl.body };
+    }
+
     for (const { a, c } of rows) {
       if (c.optedOut || !consented.some((x) => x.contactId === c.id)) { skipped++; continue; }
       const [i] = await db.insert(schema.interactions).values({ tenantId: t.id, contactId: c.id, channel: 'sms', direction: 'outbound', status: 'in_progress' }).returning();
-      const r2 = await sms.send({ to: decrypt(c.phoneEnc, deps.env.PHONE_ENC_KEY), body: `${t.campaignName}: reminder, ${shift.title}, ${when}. Reply STOP to opt out.`, metadata: { tenantId: t.id, interactionId: i!.id } });
-      await db.update(schema.interactions).set({ status: r2.status === 'failed' ? 'failed' : 'completed', provider: r2.provider, providerRef: r2.providerRef, startedAt: now(deps) }).where(eq(schema.interactions.id, i!.id));
+      const r2 = await sms.send({ to: decrypt(c.phoneEnc, deps.env.PHONE_ENC_KEY), body, templateId: template?.id, templateBody: template?.body, metadata: { tenantId: t.id, interactionId: i!.id } });
+      await db.update(schema.interactions).set({ status: r2.status === 'failed' ? 'failed' : 'completed', provider: r2.provider, providerRef: r2.providerRef || null, startedAt: now(deps) }).where(eq(schema.interactions.id, i!.id));
+      if (r2.status === 'failed') { failed++; continue; } // not marked as reminded, so a retry can still reach this person
       await db.update(schema.shiftAssignments).set({ remindedAt: now(deps) }).where(eq(schema.shiftAssignments.id, a.id));
       sent++;
     }
-    return { sent, skipped, simulated: sms.simulated };
+    return { sent, skipped, failed, simulated: sms.simulated };
   });
 }

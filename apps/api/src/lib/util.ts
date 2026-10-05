@@ -17,5 +17,6 @@ export function channelEnv(deps: Deps): ChannelEnv {
       ? { apiKey: e.VAPI_API_KEY, phoneNumberId: e.VAPI_PHONE_NUMBER_ID, assistantId: e.VAPI_ASSISTANT_ID } : null,
     twilioSms: e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && e.TWILIO_MESSAGING_SERVICE_SID
       ? { accountSid: e.TWILIO_ACCOUNT_SID, authToken: e.TWILIO_AUTH_TOKEN, messagingServiceSid: e.TWILIO_MESSAGING_SERVICE_SID } : null,
+    dltSms: e.DLT_AUTH_KEY && e.DLT_SENDER_ID ? { authKey: e.DLT_AUTH_KEY, senderId: e.DLT_SENDER_ID, baseUrl: e.DLT_BASE_URL } : null,
   };
 }

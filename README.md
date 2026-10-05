@@ -119,12 +119,21 @@ Local Redis without Docker (Windows): download `Redis-x64-5.0.14.1.zip` from git
 - **Readiness**: `GET /ready` returns 200 when the database (and Redis, if configured) answer, 503 otherwise, with no details. Use it for the load balancer; `GET /health` stays a plain liveness check.
 - **Provider cost dashboard**: `GET /api/t/:tenantId/costs?days=30` (owner, manager, finance agent) shows one campaign's AI call spend by day and by run and its share of the spending limit. `GET /api/admin/costs?days=30` (Wayne E Solutions staff only) shows spend per campaign and per region across the platform. Costs come from the provider's end-of-call report (see call cost in the finance register).
 
+## India SMS and DLT (P0 item 4)
+
+India SMS must be sent under a DLT-registered template and sender header, and the text must match the template with only the `{#var#}` slots filled. The platform cannot register templates for you (your operator does, on the DLT portal); it tracks the registration and refuses to send anything that would be blocked.
+
+- **Adapter**: `DltSms` (`packages/channels/src/dlt.ts`) sends through MSG91's send-SMS API v2 (`DLT_AUTH_KEY`, `DLT_SENDER_ID`). It fails closed: no template id, no template text, a message that does not match the template, or a non-Indian number means nothing is sent. **Written from the provider's public docs and tested with a mocked HTTP layer only: confirm with a real account before the first live send.** Another DLT provider needs only a new adapter behind the same `SmsChannel` interface.
+- **Template lifecycle** (India only): create an `sms_template` (text is checked: `{#var#}` only, no two variables side by side, at most 8, at most 1000 characters; warnings for links and a missing opt-out line) -> `GET /api/t/:id/content/:contentId/dlt` shows the text to paste into the DLT portal -> `POST .../dlt {action:"submitted"}` -> when the operator approves, `POST .../dlt {action:"registered", templateId, header}` (template id 10-25 digits, 6-letter header) or `{action:"rejected", reason}`. Editing the text resets the registration, because it covered the old text only. Content still needs the MCMC certificate to be approved.
+- **Shift reminders** in India use the registered, certified template with `templateKey: "shift_reminder"` (suggested text: `{#var#}: reminder, {#var#}, {#var#}. Reply STOP to opt out.` for campaign, shift, day and time). A variable over 30 characters stops the whole send. Failed sends are not marked as reminded, so they can be retried.
+- **Login codes**: `OTP_PROVIDER=dlt` with `DLT_OTP_TEMPLATE_ID` and `DLT_OTP_TEMPLATE_TEXT` (one `{#var#}` for the code); checked at startup.
+
 ## Known limits (Phase 1)
 
 - Read-aloud uses the phone's built-in voice in the demo; production should ship pre-recorded Punjabi and Hindi audio.
 - The voter page and dashboard load Google Fonts; self-host them for low-data users.
 - `VapiVoice` request fields and the webhook payload must be checked against current Vapi docs before the first live call.
-- India SMS (DLT provider) adapter is not built yet; India live voice stays blocked until calling hours are confirmed.
+- India live voice stays blocked until calling hours are confirmed.
 
 ## Phase 2: ground game and money (built)
 

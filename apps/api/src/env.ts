@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { validateDltTemplate } from '@cs/channels';
 
 const schema = z.object({
   APP_DATABASE_URL: z.string().url(),
@@ -23,6 +24,13 @@ const schema = z.object({
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_MESSAGING_SERVICE_SID: z.string().optional(),
+  // India SMS through a DLT-registered provider (MSG91). The sender header is the 6-letter registered DLT header.
+  DLT_AUTH_KEY: z.string().optional(),
+  DLT_SENDER_ID: z.string().regex(/^[A-Za-z]{6}$/, 'DLT_SENDER_ID must be the 6-letter registered header').optional(),
+  DLT_BASE_URL: z.string().url().optional(),
+  // Login-code SMS (OTP_PROVIDER=dlt): the registered template id and its exact text with ONE {#var#} for the code.
+  DLT_OTP_TEMPLATE_ID: z.string().regex(/^\d{10,25}$/).optional(),
+  DLT_OTP_TEMPLATE_TEXT: z.string().max(1000).optional(),
   // AI assistant (optional; without it the assistant answers extractively from approved text).
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-5'),
@@ -48,6 +56,10 @@ const schema = z.object({
   message: 'OTP_PROVIDER=console is for development only; use twilio (CA) or dlt (IN) in production',
 }).refine((e) => e.OTP_PROVIDER !== 'twilio' || !!(e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && e.TWILIO_MESSAGING_SERVICE_SID), {
   message: 'OTP_PROVIDER=twilio needs TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_MESSAGING_SERVICE_SID',
+}).refine((e) => e.OTP_PROVIDER !== 'dlt' || !!(e.DLT_AUTH_KEY && e.DLT_SENDER_ID && e.DLT_OTP_TEMPLATE_ID && e.DLT_OTP_TEMPLATE_TEXT), {
+  message: 'OTP_PROVIDER=dlt needs DLT_AUTH_KEY, DLT_SENDER_ID, DLT_OTP_TEMPLATE_ID and DLT_OTP_TEMPLATE_TEXT',
+}).refine((e) => e.OTP_PROVIDER !== 'dlt' || !e.DLT_OTP_TEMPLATE_TEXT || (() => { const c = validateDltTemplate(e.DLT_OTP_TEMPLATE_TEXT); return c.ok && c.varCount === 1; })(), {
+  message: 'DLT_OTP_TEMPLATE_TEXT must be a valid DLT template with exactly one {#var#} (the code)',
 }).refine((e) => !(e.NODE_ENV === 'production' && !e.EVIDENCE_SIGNING_KEY), {
   message: 'EVIDENCE_SIGNING_KEY is required in production',
 });

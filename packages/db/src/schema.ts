@@ -123,6 +123,13 @@ export const contentItems = pgTable('content_items', {
   status: text('status', { enum: ['draft', 'approved', 'certified'] }).notNull().default('draft'),
   certificateNo: text('certificate_no'),
   dltTemplateId: text('dlt_template_id'),
+  /** India DLT: not_registered -> submitted -> registered | rejected. Only a registered template can be sent. */
+  dltStatus: text('dlt_status', { enum: ['not_registered', 'submitted', 'registered', 'rejected'] }).notNull().default('not_registered'),
+  dltHeader: text('dlt_header'),
+  dltSubmittedAt: timestamp('dlt_submitted_at', { withTimezone: true }),
+  dltRejectionReason: text('dlt_rejection_reason'),
+  /** Which platform message this template is for (reminders need one registered 'shift_reminder' template). */
+  templateKey: text('template_key', { enum: ['shift_reminder'] }),
   approvedBy: uuid('approved_by'),
   approvedAt: timestamp('approved_at', { withTimezone: true }),
   geoAreaId: uuid('geo_area_id'),

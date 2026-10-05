@@ -1,14 +1,17 @@
 import { MockSms, MockVoice } from './mock.js';
 import { VapiVoice, type VapiConfig } from './vapi.js';
 import { TwilioSms, type TwilioSmsConfig } from './twilio-sms.js';
+import { DltSms, type DltSmsConfig } from './dlt.js';
 import type { SmsChannel, VoiceChannel } from './types.js';
 
 export * from './types.js';
-export { MockVoice, MockSms, VapiVoice, TwilioSms };
+export { MockVoice, MockSms, VapiVoice, TwilioSms, DltSms };
+export * from './dlt.js';
 
 export interface ChannelEnv {
   vapi?: VapiConfig | null;
   twilioSms?: TwilioSmsConfig | null;
+  dltSms?: DltSmsConfig | null;
 }
 
 /**
@@ -24,6 +27,6 @@ export function voiceFor(tenant: { isDemo: boolean; region: 'IN' | 'CA' }, env: 
 export function smsFor(tenant: { isDemo: boolean; region: 'IN' | 'CA' }, env: ChannelEnv): SmsChannel {
   if (tenant.isDemo) return new MockSms();
   if (tenant.region === 'CA' && env.twilioSms) return new TwilioSms(env.twilioSms);
-  // India DLT provider adapter lands once the provider is chosen.
+  if (tenant.region === 'IN' && env.dltSms) return new DltSms(env.dltSms);
   throw new Error('SMS_PROVIDER_NOT_CONFIGURED');
 }

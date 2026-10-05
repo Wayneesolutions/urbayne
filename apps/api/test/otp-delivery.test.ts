@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import pg from 'pg';
 import { randomBytes } from 'node:crypto';
@@ -19,9 +19,28 @@ describe('OTP env rules', () => {
     const env = loadEnv({ ...base, OTP_PROVIDER: 'twilio', TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 't', TWILIO_MESSAGING_SERVICE_SID: 'MG1' });
     expect(otpSenderFor(env, 5).name).toBe('twilio');
   });
-  it('dlt provider fails closed until the adapter exists', async () => {
-    const env = loadEnv({ ...base, DEPLOY_REGION: 'IN', OTP_PROVIDER: 'dlt' });
-    expect(await otpSenderFor(env, 5).send('+919999900001', '123456')).toBe(false);
+  const dlt = { ...base, DEPLOY_REGION: 'IN', OTP_PROVIDER: 'dlt', DLT_AUTH_KEY: 'K', DLT_SENDER_ID: 'WAYNES', DLT_OTP_TEMPLATE_ID: '1007123456789012345', DLT_OTP_TEMPLATE_TEXT: 'Your login code is {#var#}. Valid for 5 minutes. Do not share it.' };
+
+  it('dlt provider needs its keys and a one-variable template, checked at startup', () => {
+    expect(() => loadEnv({ ...base, DEPLOY_REGION: 'IN', OTP_PROVIDER: 'dlt' })).toThrow(/DLT_AUTH_KEY/);
+    expect(() => loadEnv({ ...dlt, DLT_OTP_TEMPLATE_TEXT: 'Code {#var#} for {#var#}' })).toThrow(/exactly one/);
+    expect(() => loadEnv({ ...dlt, DLT_SENDER_ID: 'TOOLONGHEADER' })).toThrow(/6-letter/);
+    expect(otpSenderFor(loadEnv(dlt), 5).name).toBe('dlt');
+  });
+
+  it('dlt sends the code through the registered template, and reports failure', async () => {
+    const calls: { url: string; body: Record<string, unknown> }[] = [];
+    vi.stubGlobal('fetch', async (url: string, init: { body: string }) => {
+      calls.push({ url, body: JSON.parse(init.body) });
+      return { ok: true, json: async () => ({ type: 'success', message: 'req-1' }) };
+    });
+    const sender = otpSenderFor(loadEnv(dlt), 5);
+    expect(await sender.send('+919999900001', '123456')).toBe(true);
+    expect(calls[0]!.body).toMatchObject({ sender: 'WAYNES', DLT_TE_ID: '1007123456789012345', sms: [{ message: 'Your login code is 123456. Valid for 5 minutes. Do not share it.', to: ['9999900001'] }] });
+    vi.stubGlobal('fetch', async () => ({ ok: true, json: async () => ({ type: 'error' }) }));
+    expect(await otpSenderFor(loadEnv(dlt), 5).send('+919999900001', '123456')).toBe(false);
+    expect(await otpSenderFor(loadEnv(dlt), 5).send('+12045550001', '123456')).toBe(false); // not an Indian number
+    vi.unstubAllGlobals();
   });
 });
 

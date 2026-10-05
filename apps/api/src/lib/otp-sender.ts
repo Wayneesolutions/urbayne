@@ -1,4 +1,4 @@
-import { TwilioSms } from '@cs/channels';
+import { TwilioSms, DltSms, fillDltTemplate } from '@cs/channels';
 import type { Env } from '../env.js';
 
 /** Delivers a login code to a phone. Returns false when delivery failed (never throws provider details). */
@@ -33,14 +33,18 @@ export class TwilioOtp implements OtpSender {
   }
 }
 
-/**
- * India: needs the DLT provider adapter and a registered OTP template (P0 item 4).
- * Until then it fails closed so the login screen shows a clear error instead of pretending to send.
- */
-export class DltOtpNotReady implements OtpSender {
-  readonly name = 'dlt-not-configured';
-  async send() {
-    return false;
+/** India: login code through the DLT-registered OTP template (the sent text must match what was registered). */
+export class DltOtp implements OtpSender {
+  readonly name = 'dlt';
+  constructor(private sms: DltSms, private templateId: string, private templateText: string) {}
+  async send(phone: string, code: string) {
+    try {
+      const body = fillDltTemplate(this.templateText, [code]);
+      const r = await this.sms.send({ to: phone, body, templateId: this.templateId, templateBody: this.templateText, metadata: { tenantId: '', interactionId: '' } });
+      return r.status !== 'failed';
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -51,6 +55,11 @@ export function otpSenderFor(env: Env, ttlMinutes: number): OtpSender {
       ttlMinutes,
     );
   }
-  if (env.OTP_PROVIDER === 'dlt') return new DltOtpNotReady();
+  if (env.OTP_PROVIDER === 'dlt') {
+    return new DltOtp(
+      new DltSms({ authKey: env.DLT_AUTH_KEY!, senderId: env.DLT_SENDER_ID!, baseUrl: env.DLT_BASE_URL }),
+      env.DLT_OTP_TEMPLATE_ID!, env.DLT_OTP_TEMPLATE_TEXT!,
+    );
+  }
   return new ConsoleOtp();
 }
