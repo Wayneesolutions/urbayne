@@ -20,6 +20,7 @@ import { memberRoutes } from './routes/members.js';
 import { fieldRoutes } from './modules/field/routes.js';
 import { opsRoutes } from './modules/ops/routes.js';
 import { financeRoutes } from './modules/finance/routes.js';
+import { privacyRoutes } from './modules/privacy/routes.js';
 import type { Deps } from './types.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -59,6 +60,7 @@ export function createApp(deps: Deps) {
   app.use('/api/t/:tenantId/field', authed, fieldRoutes(deps));
   app.use('/api/t/:tenantId/ops', authed, opsRoutes(deps));
   app.use('/api/t/:tenantId/finance', authed, financeRoutes(deps));
+  app.use('/api/t/:tenantId/privacy', authed, privacyRoutes(deps));
 
   // Built dashboard (apps/dashboard/dist), if present.
   const dash = path.resolve(here, '../../dashboard/dist');

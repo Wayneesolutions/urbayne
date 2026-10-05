@@ -61,6 +61,8 @@ export function tenantRoutes(deps: Deps) {
       pollCloseAt: z.string().datetime({ offset: true }).nullable().optional(),
       enabledModules: z.array(z.enum(MODULES)).optional(),
       spendLimitMinor: z.number().int().positive().nullable().optional(),
+      /** Personal data is deleted this many days after the election (7 to 3650). Confirm the right number with counsel. */
+      retentionDays: z.number().int().min(7).max(3650).nullable().optional(),
       slug: z.string().regex(/^[a-z0-9-]{3,40}$/).optional(),
       candidateName: z.string().max(120).optional(),
       tagline: z.string().max(200).optional(),
@@ -84,6 +86,7 @@ export function tenantRoutes(deps: Deps) {
         ...(b.pollCloseAt !== undefined && { pollCloseAt: b.pollCloseAt ? new Date(b.pollCloseAt) : null }),
         ...(b.enabledModules && { enabledModules: b.enabledModules }),
         ...(b.spendLimitMinor !== undefined && { spendLimitMinor: b.spendLimitMinor }),
+        ...(b.retentionDays !== undefined && { retentionDays: b.retentionDays }),
         ...(b.slug && { slug: b.slug }),
         ...(b.candidateName !== undefined && { candidateName: b.candidateName }),
         ...(b.tagline !== undefined && { tagline: b.tagline }),

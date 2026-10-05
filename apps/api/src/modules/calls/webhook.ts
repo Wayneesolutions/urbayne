@@ -4,6 +4,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { schema, withTenant } from '@cs/db';
 import { HttpError, ah } from '../../lib/http.js';
 import { recordOutcome } from './runner.js';
+import { recordIvrConsent } from '../privacy/consent.js';
 import type { Deps } from '../../types.js';
 
 /**
@@ -34,7 +35,11 @@ export function vapiWebhook(deps: Deps) {
         status: ended, endedAt: new Date(), durationSec: Math.round(Number(msg.durationSeconds ?? 0)),
         transcript: typeof msg.transcript === 'string' ? msg.transcript : null, optedOut: optOut, updatedAt: new Date(),
       }).where(eq(schema.interactions.id, i.id));
-      if (ended === 'completed' && i.contactId) await recordOutcome(db, tenantId, i.id, i.contactId, answers, optOut);
+      if (ended === 'completed' && i.contactId) {
+        await recordOutcome(db, tenantId, i.id, i.contactId, answers, optOut);
+        // Consent given by pressing a key on the call (only when the provider says which consent text was played).
+        if (!optOut) await recordIvrConsent(db, tenantId, i.id, i.contactId, String(msg.analysis?.structuredData?.locale ?? 'en'), msg.analysis?.structuredData?.consent);
+      }
     });
     res.json({ ok: true });
   }));

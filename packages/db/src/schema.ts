@@ -31,6 +31,9 @@ export const tenants = pgTable('tenants', {
   contributionLimitMinor: bigint('contribution_limit_minor', { mode: 'number' }),
   officeLat: doublePrecision('office_lat'),
   officeLng: doublePrecision('office_lng'),
+  /** Personal data is deleted this many days after the election. null = not set, nothing is deleted automatically. */
+  retentionDays: integer('retention_days'),
+  purgedAt: timestamp('purged_at', { withTimezone: true }),
   ...stamps,
 });
 
@@ -103,6 +106,9 @@ export const consents = pgTable('consents', {
   locale: text('locale').notNull(),
   capturedVia: text('captured_via').notNull(),
   capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+  /** Paper: the form / sheet serial number. IVR: the call (interaction) id. */
+  evidenceRef: text('evidence_ref'),
+  capturedBy: uuid('captured_by'),
   withdrawnAt: timestamp('withdrawn_at', { withTimezone: true }),
   ...stamps,
 });
@@ -330,4 +336,23 @@ export const financeSignoffs = pgTable('finance_signoffs', {
   entries: integer('entries').notNull(),
   signedBy: uuid('signed_by').notNull(),
   signedAt: timestamp('signed_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Keyed phone hashes of people who must never be contacted again. Survives deletion of the contact itself. */
+export const suppressions = pgTable('suppressions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  phoneHash: text('phone_hash').notNull(),
+  reason: text('reason', { enum: ['opted_out', 'erasure_request'] }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** A record of every deletion (counts only, never personal data). */
+export const dataPurges = pgTable('data_purges', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  kind: text('kind', { enum: ['retention', 'owner_request', 'contact_erasure'] }).notNull(),
+  counts: jsonb('counts').$type<Record<string, number>>().notNull(),
+  requestedBy: uuid('requested_by'),
+  ranAt: timestamp('ran_at', { withTimezone: true }).notNull().defaultNow(),
 });

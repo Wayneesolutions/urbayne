@@ -7,7 +7,7 @@ export function Contacts() {
   const { tenant: t } = useOutletContext<ShellCtx>();
   const [data, setData] = useState<{ total: number; optedOut: number; items: any[] } | null>(null);
   const [areas, setAreas] = useState<any[]>([]);
-  const [form, setForm] = useState({ name: '', phone: '', geoAreaId: '', consent: true });
+  const [form, setForm] = useState({ name: '', phone: '', geoAreaId: '', consent: true, formNo: '' });
   const [err, setErr] = useState('');
   const load = () => api(`/t/${t.id}/contacts`).then(setData);
   useEffect(() => { load(); api(`/t/${t.id}/geo`).then(setAreas); }, [t.id]);
@@ -17,9 +17,9 @@ export function Contacts() {
     try {
       await api(`/t/${t.id}/contacts`, { body: {
         name: form.name || undefined, phone: form.phone, source: 'form', geoAreaId: form.geoAreaId || undefined,
-        consents: form.consent ? ['info', 'survey', 'reminder'].map((purpose) => ({ purpose, channel: 'voice', textVersion: 'paper-v1', locale: t.region === 'IN' ? 'pa' : 'en', capturedVia: 'paper' })) : [],
+        consents: form.consent ? ['info', 'survey', 'reminder'].map((purpose) => ({ purpose, channel: 'voice', textVersion: 'paper-v1', locale: t.region === 'IN' ? 'pa' : 'en', capturedVia: 'paper', evidenceRef: form.formNo.trim() })) : [],
       } });
-      setForm({ name: '', phone: '', geoAreaId: '', consent: true }); load();
+      setForm({ name: '', phone: '', geoAreaId: '', consent: true, formNo: '' }); load();
     } catch (x) { setErr(x instanceof ApiError ? x.message : 'Could not add.'); }
   }
   return (
@@ -30,6 +30,7 @@ export function Contacts() {
         <label>Name<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
         <label>Mobile<input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} required placeholder="+91…" /></label>
         <label>Area<select value={form.geoAreaId} onChange={(e) => setForm({ ...form, geoAreaId: e.target.value })}><option value="">–</option>{areas.filter((a) => a.parentId).map((a) => <option key={a.id} value={a.id}>{a.nameEn}</option>)}</select></label>
+        <label>Paper form no.<input value={form.formNo} onChange={(e) => setForm({ ...form, formNo: e.target.value })} placeholder="printed on the form" required={form.consent} /></label>
         <label className="check"><input type="checkbox" checked={form.consent} onChange={(e) => setForm({ ...form, consent: e.target.checked })} />Consent to calls recorded on paper</label>
         <button className="btn">Add contact</button>
         {err && <p className="err">{err}</p>}
