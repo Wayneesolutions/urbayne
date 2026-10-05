@@ -114,6 +114,25 @@ run('Phase 1 (integration)', () => {
     expect(pack.campaign.demo).toBe(true);
   });
 
+  it('exports a sealed PDF evidence pack (Punjabi script included) that anyone can verify', async () => {
+    const res = await request(app).get(`/api/t/${tenant}/calls/runs/${runId}/evidence.pdf`).set(auth()).buffer(true).parse((r, cb) => {
+      const c: Buffer[] = []; r.on('data', (d: Buffer) => c.push(d)); r.on('end', () => cb(null, Buffer.concat(c)));
+    }).expect(200);
+    expect(res.headers['content-type']).toContain('application/pdf');
+    const pdf = res.body as Buffer;
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(pdf.length).toBeGreaterThan(5000);
+    const seal = (await owner.query('SELECT * FROM evidence_seals WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 1', [tenant])).rows[0];
+    expect(seal.run_id).toBe(runId);
+    const check = (await request(app).get(`/api/public/evidence/${seal.id}`).expect(200)).body;
+    expect(check).toMatchObject({ valid: true, sealId: seal.id, sha256: seal.sha256 });
+    // A tampered record no longer verifies.
+    await owner.query("UPDATE evidence_seals SET sha256 = repeat('0', 64) WHERE id = $1", [seal.id]);
+    expect((await request(app).get(`/api/public/evidence/${seal.id}`).expect(200)).body.valid).toBe(false);
+    await request(app).get('/api/public/evidence/00000000-0000-4000-8000-000000000000').expect(404);
+    await request(app).get(`/api/t/${tenant}/calls/runs/${runId}/evidence.pdf`).expect(401);
+  });
+
   it('masks phone numbers in the call log', async () => {
     const rows = (await request(app).get(`/api/t/${tenant}/calls/runs/${runId}/interactions`).set(auth()).expect(200)).body;
     expect(rows[0].phone).toMatch(/\*{5}/);

@@ -358,3 +358,13 @@ export const dataPurges = pgTable('data_purges', {
   requestedBy: uuid('requested_by'),
   ranAt: timestamp('ran_at', { withTimezone: true }).notNull().defaultNow(),
 });
+export const evidenceSeals = pgTable('evidence_seals', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  runId: uuid('run_id').notNull(),
+  sha256: text('sha256').notNull(),
+  signature: text('signature').notNull(),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull(),
+  createdBy: uuid('created_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});

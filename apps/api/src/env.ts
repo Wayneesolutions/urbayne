@@ -24,6 +24,8 @@ const schema = z.object({
   // Provider costs are billed in USD; these convert them into the campaign's currency for the spending register. Update to the current rate.
   FX_USD_TO_INR: z.coerce.number().positive().default(85),
   FX_USD_TO_CAD: z.coerce.number().positive().default(1.4),
+  // Signs evidence PDFs (HMAC). Required in production; in development it falls back to a key derived from JWT_SECRET.
+  EVIDENCE_SIGNING_KEY: z.string().min(32).optional(),
   NODE_ENV: z.string().default('development'),
   // DEV/DEMO ONLY: return the OTP in the API response so a demo can log in without SMS.
   DEV_RETURN_OTP: z.enum(['true', 'false']).default('false'),
@@ -33,6 +35,8 @@ const schema = z.object({
   message: 'OTP_PROVIDER=console is for development only; use twilio (CA) or dlt (IN) in production',
 }).refine((e) => e.OTP_PROVIDER !== 'twilio' || !!(e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && e.TWILIO_MESSAGING_SERVICE_SID), {
   message: 'OTP_PROVIDER=twilio needs TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_MESSAGING_SERVICE_SID',
+}).refine((e) => !(e.NODE_ENV === 'production' && !e.EVIDENCE_SIGNING_KEY), {
+  message: 'EVIDENCE_SIGNING_KEY is required in production',
 });
 
 export type Env = z.infer<typeof schema>;
