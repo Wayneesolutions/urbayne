@@ -47,7 +47,9 @@ export function tenantRoutes(deps: Deps) {
       });
       res.status(201).json(tenant);
     } catch (e: any) {
-      if (e?.code === '23505' && String(e?.constraint ?? e?.message).includes('one_race_one_client')) {
+      // drizzle wraps the database error: the Postgres error (code, constraint) is on .cause
+      const pgErr = e?.cause ?? e;
+      if (pgErr?.code === '23505' && String(pgErr?.constraint ?? pgErr?.message).includes('one_race_one_client')) {
         throw new HttpError(409, 'ONE_RACE_ONE_CLIENT', 'This seat already has an active campaign on the platform.');
       }
       throw e;
