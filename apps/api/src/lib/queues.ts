@@ -5,16 +5,20 @@ import { schema, withTenant } from '@cs/db';
 import { processRun } from '../modules/calls/runner.js';
 import { sendShiftReminders } from '../modules/ops/routes.js';
 import { reconcileCallCost } from '../modules/calls/cost.js';
+import { notifyTicket, type NotifyKind } from '../modules/service/sms.js';
+import type { Status } from '../modules/service/categories.js';
 import type { Deps } from '../types.js';
 
 export const QUEUE_PREFIX = 'cs';
 export const RUN_QUEUE = 'call-runs';
 export const REMINDER_QUEUE = 'reminders';
 export const COST_QUEUE = 'call-costs';
+export const TICKET_SMS_QUEUE = 'ticket-sms';
 
 export interface RunJob { tenantId: string; runId: string }
 export interface ReminderJob { tenantId: string; shiftId: string }
 export interface CostJob { tenantId: string; interactionId: string }
+export interface TicketSmsJob { tenantId: string; ticketId: string; kind: NotifyKind; status?: Status }
 
 /** Background work. Jobs live in Redis, so they survive a restart and any server with workers can pick them up. */
 export interface Queues {
@@ -22,6 +26,8 @@ export interface Queues {
   enqueueReminders(tenantId: string, shiftId: string): Promise<void>;
   /** Looks up a finished call's final cost at the provider after a delay (billing is not always final when the webhook arrives). */
   enqueueCallCost(tenantId: string, interactionId: string): Promise<void>;
+  /** Acknowledgement and status texts to residents about their requests (sent within seconds). */
+  enqueueTicketSms(tenantId: string, ticketId: string, kind: NotifyKind, status?: Status): Promise<void>;
   /** Starts workers in this process. Call once, from the API process or from a dedicated worker process. */
   startWorkers(deps: Deps, opts?: { concurrency?: number }): Worker[];
   close(): Promise<void>;
@@ -38,12 +44,14 @@ export function createQueues(connection: Redis): Queues {
   const runs = new Queue<RunJob>(RUN_QUEUE, { connection, prefix: QUEUE_PREFIX, defaultJobOptions: jobDefaults });
   const reminders = new Queue<ReminderJob>(REMINDER_QUEUE, { connection, prefix: QUEUE_PREFIX, defaultJobOptions: jobDefaults });
   const costs = new Queue<CostJob>(COST_QUEUE, { connection, prefix: QUEUE_PREFIX, defaultJobOptions: { ...jobDefaults, attempts: 5, backoff: { type: 'exponential' as const, delay: 60_000 } } });
+  const ticketSms = new Queue<TicketSmsJob>(TICKET_SMS_QUEUE, { connection, prefix: QUEUE_PREFIX, defaultJobOptions: { ...jobDefaults, attempts: 4, backoff: { type: 'exponential' as const, delay: 3_000 } } });
   const workers: Worker[] = [];
 
   return {
     // One waiting job per run: queueing an already-queued run is a no-op, never a second runner.
     async enqueueRun(tenantId, runId) { await runs.add('run', { tenantId, runId }, { jobId: `run-${runId}` }); },
     async enqueueCallCost(tenantId, interactionId) { await costs.add('cost', { tenantId, interactionId }, { jobId: `cost-${interactionId}`, delay: 60_000 }); },
+    async enqueueTicketSms(tenantId, ticketId, kind, status) { await ticketSms.add('sms', { tenantId, ticketId, kind, status }, { jobId: `tsms-${ticketId}-${kind}-${status ?? 'x'}` }); },
     async enqueueReminders(tenantId, shiftId) { await reminders.add('remind', { tenantId, shiftId }, { jobId: `remind-${shiftId}` }); },
 
     startWorkers(deps, opts) {
@@ -58,7 +66,11 @@ export function createQueues(connection: Redis): Queues {
         const r = await reconcileCallCost(deps, job.data.tenantId, job.data.interactionId);
         if (r === 'no_cost_yet') throw new Error('COST_NOT_FINAL'); // retried with backoff
       }, { connection: connection.duplicate(), prefix: QUEUE_PREFIX, concurrency: 2 });
-      for (const w of [w1, w2, w3]) {
+      const w4 = new Worker<TicketSmsJob>(TICKET_SMS_QUEUE, async (job: Job<TicketSmsJob>) => {
+        const r = await notifyTicket(deps, job.data.tenantId, job.data.ticketId, job.data.kind, job.data.status);
+        if (r === 'failed') throw new Error('TICKET_SMS_FAILED'); // retried with backoff
+      }, { connection: connection.duplicate(), prefix: QUEUE_PREFIX, concurrency: 4 });
+      for (const w of [w1, w2, w3, w4]) {
         w.on('failed', (job, err) => {
           deps.log.error({ queue: w.name, jobId: job?.id, attempt: job?.attemptsMade, err }, 'job failed');
           // Report only when the last attempt failed, not on every retry.
@@ -67,12 +79,12 @@ export function createQueues(connection: Redis): Queues {
         w.on('error', (err) => deps.log.error({ queue: w.name, err }, 'worker error'));
         workers.push(w);
       }
-      return [w1, w2, w3];
+      return [w1, w2, w3, w4];
     },
 
     async close() {
       await Promise.all(workers.map((w) => w.close()));
-      await Promise.all([runs.close(), reminders.close(), costs.close()]);
+      await Promise.all([runs.close(), reminders.close(), costs.close(), ticketSms.close()]);
     },
   };
 }

@@ -25,6 +25,10 @@ import { fieldRoutes } from './modules/field/routes.js';
 import { opsRoutes } from './modules/ops/routes.js';
 import { financeRoutes } from './modules/finance/routes.js';
 import { privacyRoutes } from './modules/privacy/routes.js';
+import { serviceRoutes } from './modules/service/routes.js';
+import { servicePublicRoutes } from './modules/service/public.js';
+import { inboundSmsRoutes } from './modules/service/inbound.js';
+import { serviceAdminRoutes } from './modules/service/admin.js';
 import { MemoryRateStore, RedisRateStore } from './lib/rate-limit.js';
 import { MemorySessions, RedisSessions } from './lib/sessions.js';
 import type { Deps, DepsInit } from './types.js';
@@ -66,9 +70,11 @@ export function createApp(init: DepsInit) {
   });
 
   // Public (no login)
+  app.use('/api/public', servicePublicRoutes(deps));
   app.use('/api/public', publicRoutes(deps));
   app.use('/s', shortLinkRedirect(deps));
   app.use('/webhooks', vapiWebhook(deps));
+  app.use('/webhooks/sms', inboundSmsRoutes(deps));
   app.get('/v/:slug', voterPage(path.join(here, 'public', 'voter.html')));
   // Booth worker / canvasser app (installable, works offline).
   app.use('/w', strictCsp, express.static(path.join(here, 'public', 'worker'), { index: 'index.html' }));
@@ -90,7 +96,9 @@ export function createApp(init: DepsInit) {
   app.use('/api/t/:tenantId/finance', authed, financeRoutes(deps));
   app.use('/api/t/:tenantId/privacy', authed, privacyRoutes(deps));
   app.use('/api/t/:tenantId/costs', authed, costRoutes(deps));
+  app.use('/api/t/:tenantId/service', authed, serviceRoutes(deps));
   app.use('/api/admin', adminCostRoutes(deps));
+  app.use('/api/admin', serviceAdminRoutes(deps));
 
   // Built dashboard (apps/dashboard/dist), if present.
   const dash = path.resolve(here, '../../dashboard/dist');

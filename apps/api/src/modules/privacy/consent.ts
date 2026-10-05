@@ -4,7 +4,7 @@ import { schema, type withTenant } from '@cs/db';
 type Db = Parameters<Parameters<typeof withTenant>[2]>[0];
 
 export interface ConsentInput {
-  purpose: 'info' | 'survey' | 'reminder' | 'donation';
+  purpose: 'info' | 'survey' | 'reminder' | 'donation' | 'service';
   channel: 'voice' | 'sms' | 'ai_answer';
   textVersion: string;
   locale: string;
@@ -47,7 +47,7 @@ export async function recordIvrConsent(
 ): Promise<number> {
   const textVersion = typeof consent?.textVersion === 'string' ? consent.textVersion.trim() : '';
   const purposes = Array.isArray(consent?.purposes)
-    ? (consent!.purposes as unknown[]).filter((p): p is ConsentInput['purpose'] => p === 'info' || p === 'survey' || p === 'reminder' || p === 'donation')
+    ? (consent!.purposes as unknown[]).filter((p): p is ConsentInput['purpose'] => p === 'info' || p === 'survey' || p === 'reminder' || p === 'donation' || p === 'service')
     : [];
   if (!textVersion || !purposes.length) return 0;
   // Money is never asked for by an automated call (region rule), so a donation consent can never come from IVR.

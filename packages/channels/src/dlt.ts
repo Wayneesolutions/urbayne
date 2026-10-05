@@ -105,5 +105,13 @@ export const DLT_SUGGESTED_TEMPLATES = {
     body: '{#var#}: reminder, {#var#}, {#var#}. Reply STOP to opt out.',
     variables: ['campaign name', 'shift title', 'day and time'],
   },
+  ticket_ack: {
+    body: '{#var#}: request {#var#} received. We will update you. Reply STOP to opt out.',
+    variables: ['office name', 'request number'],
+  },
+  ticket_status: {
+    body: '{#var#}: request {#var#} is now {#var#}. Reply STOP to opt out.',
+    variables: ['office name', 'request number', 'status'],
+  },
 } as const;
 export type DltTemplateKey = keyof typeof DLT_SUGGESTED_TEMPLATES;

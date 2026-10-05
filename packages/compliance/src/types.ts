@@ -1,6 +1,6 @@
 import type { Channel, Locale, RegionConfig, CallingHours } from '@cs/regions';
 
-export type Purpose = 'info' | 'survey' | 'reminder' | 'donation';
+export type Purpose = 'info' | 'survey' | 'reminder' | 'donation' | 'service';
 export type ContentKind = 'script' | 'sms_template' | 'page' | 'faq' | 'ad';
 export type ContentStatus = 'draft' | 'approved' | 'certified';
 

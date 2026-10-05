@@ -18,6 +18,8 @@ const createSchema = z.object({
   timeZone: z.string().optional(),
   pollCloseAt: z.string().datetime({ offset: true }).optional(),
   enabledModules: z.array(z.enum(MODULES)).default([]),
+  /** 'office' = a sitting representative's service office (no election-date deletion; ticket retention instead). */
+  kind: z.enum(['campaign', 'office']).default('campaign'),
 });
 
 export function tenantRoutes(deps: Deps) {
@@ -40,6 +42,7 @@ export function tenantRoutes(deps: Deps) {
           timeZone: b.timeZone ?? region.defaultTimeZone,
           pollCloseAt: b.pollCloseAt ? new Date(b.pollCloseAt) : null,
           enabledModules: b.enabledModules,
+          kind: b.kind,
         }).returning();
         await db.insert(schema.memberships).values({ tenantId: id, userId: req.user!.id, role: 'owner' });
         await db.insert(schema.auditLog).values({ tenantId: id, actorId: req.user!.id, action: 'create', entity: 'tenant', entityId: id, after: t, ip: req.ip });
@@ -65,6 +68,10 @@ export function tenantRoutes(deps: Deps) {
       spendLimitMinor: z.number().int().positive().nullable().optional(),
       /** Personal data is deleted this many days after the election (7 to 3650). Confirm the right number with counsel. */
       retentionDays: z.number().int().min(7).max(3650).nullable().optional(),
+      /** Days within which a request should be resolved. */
+      serviceSlaDays: z.number().int().min(1).max(90).optional(),
+      /** Personal details on closed requests are removed this many days after closing (30 to 3650). Confirm the right number with counsel. */
+      ticketRetentionDays: z.number().int().min(30).max(3650).nullable().optional(),
       slug: z.string().regex(/^[a-z0-9-]{3,40}$/).optional(),
       candidateName: z.string().max(120).optional(),
       tagline: z.string().max(200).optional(),
@@ -89,6 +96,8 @@ export function tenantRoutes(deps: Deps) {
         ...(b.enabledModules && { enabledModules: b.enabledModules }),
         ...(b.spendLimitMinor !== undefined && { spendLimitMinor: b.spendLimitMinor }),
         ...(b.retentionDays !== undefined && { retentionDays: b.retentionDays }),
+        ...(b.serviceSlaDays !== undefined && { serviceSlaDays: b.serviceSlaDays }),
+        ...(b.ticketRetentionDays !== undefined && { ticketRetentionDays: b.ticketRetentionDays }),
         ...(b.slug && { slug: b.slug }),
         ...(b.candidateName !== undefined && { candidateName: b.candidateName }),
         ...(b.tagline !== undefined && { tagline: b.tagline }),

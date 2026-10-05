@@ -31,6 +31,12 @@ export const tenants = pgTable('tenants', {
   contributionLimitMinor: bigint('contribution_limit_minor', { mode: 'number' }),
   officeLat: doublePrecision('office_lat'),
   officeLng: doublePrecision('office_lng'),
+  /** 'office' = a sitting representative's service office: not deleted on an election date. */
+  kind: text('kind', { enum: ['campaign', 'office'] }).notNull().default('campaign'),
+  ticketSeq: integer('ticket_seq').notNull().default(0),
+  serviceSlaDays: integer('service_sla_days').notNull().default(7),
+  /** Personal details on closed tickets are removed this many days after closing. null = kept until the owner sets it. */
+  ticketRetentionDays: integer('ticket_retention_days'),
   /** Personal data is deleted this many days after the election. null = not set, nothing is deleted automatically. */
   retentionDays: integer('retention_days'),
   purgedAt: timestamp('purged_at', { withTimezone: true }),
@@ -100,7 +106,7 @@ export const consents = pgTable('consents', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull(),
   contactId: uuid('contact_id').notNull(),
-  purpose: text('purpose', { enum: ['info', 'survey', 'reminder', 'donation'] }).notNull(),
+  purpose: text('purpose', { enum: ['info', 'survey', 'reminder', 'donation', 'service'] }).notNull(),
   channel: text('channel', { enum: ['voice', 'sms', 'ai_answer'] }).notNull(),
   textVersion: text('text_version').notNull(),
   locale: text('locale').notNull(),
@@ -129,7 +135,7 @@ export const contentItems = pgTable('content_items', {
   dltSubmittedAt: timestamp('dlt_submitted_at', { withTimezone: true }),
   dltRejectionReason: text('dlt_rejection_reason'),
   /** Which platform message this template is for (reminders need one registered 'shift_reminder' template). */
-  templateKey: text('template_key', { enum: ['shift_reminder'] }),
+  templateKey: text('template_key', { enum: ['shift_reminder', 'ticket_ack', 'ticket_status'] }),
   approvedBy: uuid('approved_by'),
   approvedAt: timestamp('approved_at', { withTimezone: true }),
   geoAreaId: uuid('geo_area_id'),
@@ -376,4 +382,95 @@ export const evidenceSeals = pgTable('evidence_seals', {
   generatedAt: timestamp('generated_at', { withTimezone: true }).notNull(),
   createdBy: uuid('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const TICKET_CATEGORIES = ['water', 'roads', 'electricity', 'sanitation', 'health', 'welfare', 'education', 'safety', 'other'] as const;
+export const TICKET_STATUSES = ['new', 'assigned', 'in_progress', 'resolved', 'closed', 'rejected'] as const;
+export const TICKET_PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
+
+export const tickets = pgTable('tickets', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  seq: integer('seq').notNull(),
+  ref: text('ref').notNull(),
+  channel: text('channel', { enum: ['web', 'sms', 'voice', 'office'] }).notNull(),
+  category: text('category', { enum: TICKET_CATEGORIES }).notNull(),
+  title: text('title').notNull(),
+  description: text('description'),
+  geoAreaId: uuid('geo_area_id'),
+  areaText: text('area_text'),
+  contactId: uuid('contact_id'),
+  requesterName: text('requester_name'),
+  language: text('language'),
+  status: text('status', { enum: TICKET_STATUSES }).notNull().default('new'),
+  priority: text('priority', { enum: TICKET_PRIORITIES }).notNull().default('normal'),
+  assignedTo: uuid('assigned_to'),
+  dueAt: timestamp('due_at', { withTimezone: true }),
+  acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
+  firstResponseAt: timestamp('first_response_at', { withTimezone: true }),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  closedAt: timestamp('closed_at', { withTimezone: true }),
+  resolutionNote: text('resolution_note'),
+  scrubbedAt: timestamp('scrubbed_at', { withTimezone: true }),
+  sourceRef: text('source_ref'),
+  createdBy: uuid('created_by'),
+  ...stamps,
+});
+
+export const ticketEvents = pgTable('ticket_events', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  ticketId: uuid('ticket_id').notNull(),
+  kind: text('kind', { enum: ['created', 'assigned', 'status', 'note', 'edited', 'ack_sent', 'update_sent', 'sms_failed'] }).notNull(),
+  visibility: text('visibility', { enum: ['internal', 'public'] }).notNull().default('internal'),
+  actorId: uuid('actor_id'),
+  body: text('body'),
+  meta: jsonb('meta'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const serviceRoutes = pgTable('service_routes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  geoAreaId: uuid('geo_area_id').notNull(),
+  userId: uuid('user_id').notNull(),
+});
+
+export const serviceNumbers = pgTable('service_numbers', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  kind: text('kind', { enum: ['sms', 'voice'] }).notNull(),
+  identifier: text('identifier').notNull(),
+  provider: text('provider').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const subscriptions = pgTable('subscriptions', {
+  tenantId: uuid('tenant_id').primaryKey(),
+  plan: text('plan').notNull(),
+  priceMinor: bigint('price_minor', { mode: 'number' }).notNull(),
+  smsRateMinor: bigint('sms_rate_minor', { mode: 'number' }).notNull().default(0),
+  smsIncluded: integer('sms_included').notNull().default(0),
+  taxPercent: numeric('tax_percent', { precision: 5, scale: 2 }),
+  status: text('status', { enum: ['trial', 'active', 'past_due', 'cancelled'] }).notNull().default('active'),
+  startedOn: date('started_on').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export interface InvoiceLine { description: string; quantity: number; unitMinor: number; amountMinor: number }
+export const invoices = pgTable('invoices', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  number: text('number').notNull(),
+  periodStart: date('period_start').notNull(),
+  periodEnd: date('period_end').notNull(),
+  currency: text('currency').notNull(),
+  subtotalMinor: bigint('subtotal_minor', { mode: 'number' }).notNull(),
+  taxMinor: bigint('tax_minor', { mode: 'number' }).notNull().default(0),
+  totalMinor: bigint('total_minor', { mode: 'number' }).notNull(),
+  lines: jsonb('lines').$type<InvoiceLine[]>().notNull(),
+  status: text('status', { enum: ['issued', 'paid', 'void'] }).notNull().default('issued'),
+  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+  paidAt: timestamp('paid_at', { withTimezone: true }),
 });
