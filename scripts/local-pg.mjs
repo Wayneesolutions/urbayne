@@ -7,7 +7,9 @@ const dir = '.local-pg';
 const PORT = Number(process.env.PG_PORT ?? 5433); // 5432 is blocked on some Windows machines
 const fresh = !existsSync(`${dir}/PG_VERSION`);
 const pg = new EmbeddedPostgres({ databaseDir: dir, user: 'cs', password: 'cs', port: PORT, persistent: true,
-  initdbFlags: ['--encoding=UTF8', '--locale=C'] });
+  initdbFlags: ['--encoding=UTF8', '--locale=C'],
+  // PG_FAST=1: skip disk syncs. ONLY for load tests, to measure the app instead of this machine's disk. A crash can lose data.
+  postgresFlags: process.env.PG_FAST ? ['-c', 'fsync=off', '-c', 'synchronous_commit=off', '-c', 'full_page_writes=off'] : [] });
 if (fresh) await pg.initialise();
 await pg.start();
 if (fresh) await pg.createDatabase('campaign_suite');

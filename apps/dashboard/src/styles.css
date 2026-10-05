@@ -181,3 +181,17 @@ kbd { display: inline-grid; place-items: center; min-width: 24px; height: 24px; 
 .trend .bar.in { background: #B9C1EC; }
 .trend .bar.done { background: var(--leaf); }
 ul.plain { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 6px; }
+
+/* results */
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
+.tab { font: inherit; font-weight: 600; background: none; border: 0; padding: 10px 16px; border-bottom: 3px solid transparent; cursor: pointer; color: var(--muted); }
+.tab.on { color: var(--ink); border-bottom-color: var(--marigold); }
+.label-pill { display: inline-block; background: #E8ECFA; color: #34408C; border-radius: 999px; padding: 3px 12px; font-size: 14px; font-weight: 600; margin: 0 0 12px; }
+.muted-row td { background: #FAFBFD; }
+.cmp { white-space: nowrap; }
+.cmp .official { color: #34408C; }
+.cmp.differs { background: #FBE7E5; }
+.cmp.differs .diff { color: var(--rust); font-weight: 700; margin-left: 6px; }
+.cmp.official_missing, .cmp.campaign_missing { color: var(--muted); }
+.official { color: #34408C; }
+tr.total td { font-weight: 700; background: #F1F8F4; }

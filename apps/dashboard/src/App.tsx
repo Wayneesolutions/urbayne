@@ -16,6 +16,7 @@ import { Finance } from './pages/Finance';
 import { Service } from './pages/Service';
 import { ServiceReports } from './pages/ServiceReports';
 import { ServiceSetup } from './pages/ServiceSetup';
+import { Results } from './pages/Results';
 
 export interface Tenant { kind?: 'campaign' | 'office'; serviceSlaDays?: number; ticketRetentionDays?: number | null; id: string; region: 'IN' | 'CA'; campaignName: string; candidateName?: string; slug?: string; isDemo: boolean; seatCode: string; electionDate: string; pollCloseAt?: string; timeZone: string }
 
@@ -37,6 +38,7 @@ export function App() {
         <Route path="events" element={<Events />} />
         <Route path="signs" element={<Signs />} />
         <Route path="finance" element={<Finance />} />
+        <Route path="results" element={<Results />} />
         <Route path="service" element={<Service />} />
         <Route path="service/reports" element={<ServiceReports />} />
         <Route path="service/setup" element={<ServiceSetup />} />
@@ -94,6 +96,10 @@ function Shell() {
           {link('calls', 'Calls & surveys')}
           {link('share', 'Share links')}
           {link('assistant', 'Assistant questions')}
+          {(ctx.role === 'owner' || ctx.role === 'manager' || ctx.role === 'coordinator') && <>
+            <span className="nav-group">Election day</span>
+            {link('results', 'Poll day and counting')}
+          </>}
           {(ctx.role === 'owner' || ctx.role === 'manager' || ctx.role === 'service_staff') && <>
             <span className="nav-group">Constituent service</span>
             {link('service', 'Requests')}

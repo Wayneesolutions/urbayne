@@ -68,24 +68,28 @@ export async function recordTurnout(db: Db, tenantId: string, input: TurnoutInpu
   const [again] = await db.select({ id: t.id }).from(t).where(eq(t.clientUuid, input.clientUuid));
   if (again) return { status: 'duplicate', id: again.id };
   if (input.asOf.getTime() > receivedAt.getTime() + MAX_FUTURE_MS) throw new HttpError(422, 'TIME_IN_THE_FUTURE', 'The time on this phone is ahead of the real time.');
-  const [area] = await db.select({ id: schema.geoAreas.id }).from(schema.geoAreas).where(eq(schema.geoAreas.id, input.geoAreaId));
+  // One round trip for "does the station exist, how many electors" and one for its neighbouring reports (these run on every report on poll day).
+  const [area] = (await db.execute(sql`SELECT g.id, p.electors FROM geo_areas g LEFT JOIN polling_stations p ON p.geo_area_id = g.id WHERE g.id = ${input.geoAreaId} LIMIT 1`)).rows as { id: string; electors: number | null }[];
   if (!area) throw new HttpError(422, 'STATION_NOT_FOUND');
-  const [station] = await db.select().from(schema.pollingStations).where(eq(schema.pollingStations.geoAreaId, input.geoAreaId));
-  const electors = station?.electors ?? null;
+  const electors = area.electors ?? null;
 
   const flags: string[] = [];
   const meta: Record<string, unknown> = {};
   const lo = new Date(input.asOf.getTime() - SAME_MOMENT_MS), hi = new Date(input.asOf.getTime() + SAME_MOMENT_MS);
-  const [sameMoment] = await db.select().from(t).where(and(eq(t.geoAreaId, input.geoAreaId), gt(t.asOf, lo), lt(t.asOf, hi))).orderBy(desc(t.receivedAt)).limit(1);
+  const near = (await db.execute(sql`
+    (SELECT 'same' AS k, id, votes_cast, as_of, agent_id FROM turnout_reports WHERE geo_area_id = ${input.geoAreaId} AND as_of > ${lo.toISOString()}::timestamptz AND as_of < ${hi.toISOString()}::timestamptz ORDER BY received_at DESC LIMIT 1)
+    UNION ALL
+    (SELECT 'earlier', id, votes_cast, as_of, agent_id FROM turnout_reports WHERE geo_area_id = ${input.geoAreaId} AND as_of < ${lo.toISOString()}::timestamptz ORDER BY as_of DESC, received_at DESC LIMIT 1)
+    UNION ALL
+    (SELECT 'later', id, votes_cast, as_of, agent_id FROM turnout_reports WHERE geo_area_id = ${input.geoAreaId} AND as_of > ${hi.toISOString()}::timestamptz ORDER BY as_of, received_at LIMIT 1)`)).rows as { k: string; id: string; votes_cast: number; as_of: string | Date; agent_id: string }[];
+  const sameMoment = near.find((x) => x.k === 'same'), earlier = near.find((x) => x.k === 'earlier'), later = near.find((x) => x.k === 'later');
   if (sameMoment) {
-    if (sameMoment.votesCast === input.votesCast) return { status: 'duplicate', id: sameMoment.id };
+    if (sameMoment.votes_cast === input.votesCast) return { status: 'duplicate', id: sameMoment.id };
     flags.push('CHANGED');
-    meta.previous = { id: sameMoment.id, votes: sameMoment.votesCast, agentId: sameMoment.agentId };
+    meta.previous = { id: sameMoment.id, votes: sameMoment.votes_cast, agentId: sameMoment.agent_id };
   }
-  const [earlier] = await db.select().from(t).where(and(eq(t.geoAreaId, input.geoAreaId), lt(t.asOf, lo))).orderBy(desc(t.asOf), desc(t.receivedAt)).limit(1);
-  if (earlier && earlier.votesCast > input.votesCast) { flags.push('DECREASED'); meta.earlier = { votes: earlier.votesCast, asOf: earlier.asOf }; }
-  const [later] = await db.select().from(t).where(and(eq(t.geoAreaId, input.geoAreaId), gt(t.asOf, hi))).orderBy(t.asOf, t.receivedAt).limit(1);
-  if (later && later.votesCast < input.votesCast) { flags.push('BELOW_LATER'); meta.later = { votes: later.votesCast, asOf: later.asOf }; }
+  if (earlier && earlier.votes_cast > input.votesCast) { flags.push('DECREASED'); meta.earlier = { votes: earlier.votes_cast, asOf: new Date(earlier.as_of) }; }
+  if (later && later.votes_cast < input.votesCast) { flags.push('BELOW_LATER'); meta.later = { votes: later.votes_cast, asOf: new Date(later.as_of) }; }
   if (electors !== null && input.votesCast > electors) flags.push('OVER_ELECTORS');
 
   // Two copies of the same report arriving at the same moment: the database's unique phone id decides, the loser is a duplicate.
@@ -94,7 +98,7 @@ export async function recordTurnout(db: Db, tenantId: string, input: TurnoutInpu
     asOf: input.asOf, receivedAt, channel: input.channel, flags, meta: Object.keys(meta).length ? meta : null,
   }).returning({ id: t.id })).catch((e) => { if (isUniqueViolation(e)) return null; throw e; });
   if (!inserted) return { status: 'duplicate' };
-  return { status: 'recorded', id: inserted[0]!.id, flags, electors, previous: earlier?.votesCast };
+  return { status: 'recorded', id: inserted[0]!.id, flags, electors, previous: earlier?.votes_cast };
 }
 
 export interface CountInput {

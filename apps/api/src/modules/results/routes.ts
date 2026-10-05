@@ -81,10 +81,10 @@ export function resultsRoutes(deps: Deps) {
       for (const rep of b.reports) {
         if (req.role === 'agent_reporter' && !allowed.has(rep.areaId)) { out.push({ clientUuid: rep.clientUuid, status: 'error', error: 'NOT_YOUR_STATION' }); continue; }
         try {
-          // A savepoint per report: one bad report never throws away the others in the batch.
-          const o = await savepoint(db, () => recordTurnout(db, t.id, { clientUuid: rep.clientUuid, geoAreaId: rep.areaId, votesCast: rep.votesCast, asOf: rep.asOf, agentId: req.user!.id, channel: channelFor(req.role, b.channel) }, received));
+          // Checks run before any write (a bad report throws an HttpError without touching the database) and the insert has its own savepoint, so no outer one is needed.
+          const o = await recordTurnout(db, t.id, { clientUuid: rep.clientUuid, geoAreaId: rep.areaId, votesCast: rep.votesCast, asOf: rep.asOf, agentId: req.user!.id, channel: channelFor(req.role, b.channel) }, received);
           out.push(o.status === 'recorded' ? { clientUuid: rep.clientUuid, status: 'recorded', flags: o.flags } : { clientUuid: rep.clientUuid, status: 'duplicate' });
-        } catch (e) { out.push({ clientUuid: rep.clientUuid, status: 'error', error: e instanceof HttpError ? e.code : 'FAILED' }); }
+        } catch (e) { if (!(e instanceof HttpError)) throw e; out.push({ clientUuid: rep.clientUuid, status: 'error', error: e.code }); }
       }
       return out;
     });
