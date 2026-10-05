@@ -8,6 +8,7 @@
     "typecheck": "turbo run typecheck",
     "dev:api": "pnpm --filter @cs/api dev",
     "db:up": "docker compose up -d",
+    "pg:local": "node scripts/local-pg.mjs",
     "db:migrate": "pnpm --filter @cs/db migrate",
     "guardrails": "node scripts/guardrails.mjs",
     "dev:dashboard": "pnpm --filter @cs/dashboard dev",
@@ -16,10 +17,11 @@
     "demo": "pnpm build:dashboard && pnpm db:migrate && pnpm seed:demo && pnpm dev:api"
   },
   "devDependencies": {
+    "@types/node": "^22.7.0",
+    "embedded-postgres": "18.4.0-beta.17",
+    "tsx": "^4.19.0",
     "turbo": "^2.1.0",
     "typescript": "^5.6.0",
-    "vitest": "^2.1.0",
-    "tsx": "^4.19.0",
-    "@types/node": "^22.7.0"
+    "vitest": "^2.1.0"
   }
 }
