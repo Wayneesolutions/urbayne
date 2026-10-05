@@ -58,7 +58,7 @@ describe('logs and error reports never carry personal data', () => {
 const OWNER_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
 (OWNER_URL && APP_URL ? describe : describe.skip)('requests, errors, readiness, cost dashboard (integration)', () => {
-  const env = testEnv({ VAPI_WEBHOOK_SECRET: 'hook-secret', FX_USD_TO_INR: '85' });
+  const env = testEnv({ VAPI_WEBHOOK_SECRET: 'hook-secret-0123456789', FX_USD_TO_INR: '85' });
   let owner: pg.Pool, pool: pg.Pool;
   let logs: ReturnType<typeof memoryStream>;
   let reporter: FakeReporter;

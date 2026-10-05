@@ -12,7 +12,7 @@ const OWNER_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
 const run = OWNER_URL && APP_URL ? describe : describe.skip;
 
-const env = testEnv({ VAPI_WEBHOOK_SECRET: 'hook-secret' });
+const env = testEnv({ VAPI_WEBHOOK_SECRET: 'hook-secret-0123456789' });
 
 run('Privacy: consent evidence and data deletion (integration)', () => {
   let owner: pg.Pool, pool: pg.Pool, app: ReturnType<typeof createApp>;
@@ -74,7 +74,7 @@ run('Privacy: consent evidence and data deletion (integration)', () => {
       const runId = (await q("INSERT INTO campaign_runs (tenant_id, name, channel, content_item_id, purpose, status) VALUES ($1,'R','voice',$2,'survey','running') RETURNING id", [tenantId, item]))[0].id;
       const call = async (consent: unknown) => {
         const i = (await q("INSERT INTO interactions (tenant_id, run_id, contact_id, channel, direction, status) VALUES ($1,$2,$3,'voice','outbound','in_progress') RETURNING id", [tenantId, runId, contactId]))[0].id;
-        await request(app).post('/webhooks/vapi').set('x-vapi-secret', 'hook-secret').send({
+        await request(app).post('/webhooks/vapi').set('x-vapi-secret', 'hook-secret-0123456789').send({
           message: { type: 'end-of-call-report', durationSeconds: 30, endedReason: 'hangup', call: { metadata: { tenantId, interactionId: i } },
             analysis: { structuredData: { locale: 'pa', answers: {}, consent } } },
         }).expect(200);

@@ -4,19 +4,24 @@ import { eq } from 'drizzle-orm';
 import { schema, withTenant } from '@cs/db';
 import { processRun } from '../modules/calls/runner.js';
 import { sendShiftReminders } from '../modules/ops/routes.js';
+import { reconcileCallCost } from '../modules/calls/cost.js';
 import type { Deps } from '../types.js';
 
 export const QUEUE_PREFIX = 'cs';
 export const RUN_QUEUE = 'call-runs';
 export const REMINDER_QUEUE = 'reminders';
+export const COST_QUEUE = 'call-costs';
 
 export interface RunJob { tenantId: string; runId: string }
 export interface ReminderJob { tenantId: string; shiftId: string }
+export interface CostJob { tenantId: string; interactionId: string }
 
 /** Background work. Jobs live in Redis, so they survive a restart and any server with workers can pick them up. */
 export interface Queues {
   enqueueRun(tenantId: string, runId: string): Promise<void>;
   enqueueReminders(tenantId: string, shiftId: string): Promise<void>;
+  /** Looks up a finished call's final cost at the provider after a delay (billing is not always final when the webhook arrives). */
+  enqueueCallCost(tenantId: string, interactionId: string): Promise<void>;
   /** Starts workers in this process. Call once, from the API process or from a dedicated worker process. */
   startWorkers(deps: Deps, opts?: { concurrency?: number }): Worker[];
   close(): Promise<void>;
@@ -32,11 +37,13 @@ const jobDefaults = {
 export function createQueues(connection: Redis): Queues {
   const runs = new Queue<RunJob>(RUN_QUEUE, { connection, prefix: QUEUE_PREFIX, defaultJobOptions: jobDefaults });
   const reminders = new Queue<ReminderJob>(REMINDER_QUEUE, { connection, prefix: QUEUE_PREFIX, defaultJobOptions: jobDefaults });
+  const costs = new Queue<CostJob>(COST_QUEUE, { connection, prefix: QUEUE_PREFIX, defaultJobOptions: { ...jobDefaults, attempts: 5, backoff: { type: 'exponential' as const, delay: 60_000 } } });
   const workers: Worker[] = [];
 
   return {
     // One waiting job per run: queueing an already-queued run is a no-op, never a second runner.
     async enqueueRun(tenantId, runId) { await runs.add('run', { tenantId, runId }, { jobId: `run-${runId}` }); },
+    async enqueueCallCost(tenantId, interactionId) { await costs.add('cost', { tenantId, interactionId }, { jobId: `cost-${interactionId}`, delay: 60_000 }); },
     async enqueueReminders(tenantId, shiftId) { await reminders.add('remind', { tenantId, shiftId }, { jobId: `remind-${shiftId}` }); },
 
     startWorkers(deps, opts) {
@@ -47,7 +54,11 @@ export function createQueues(connection: Redis): Queues {
         const t = await withTenant(deps.pool, job.data.tenantId, async (db) => (await db.select().from(schema.tenants).where(eq(schema.tenants.id, job.data.tenantId)))[0]);
         if (t) await sendShiftReminders(deps, t, job.data.shiftId);
       }, { connection: connection.duplicate(), prefix: QUEUE_PREFIX, concurrency: 2 });
-      for (const w of [w1, w2]) {
+      const w3 = new Worker<CostJob>(COST_QUEUE, async (job: Job<CostJob>) => {
+        const r = await reconcileCallCost(deps, job.data.tenantId, job.data.interactionId);
+        if (r === 'no_cost_yet') throw new Error('COST_NOT_FINAL'); // retried with backoff
+      }, { connection: connection.duplicate(), prefix: QUEUE_PREFIX, concurrency: 2 });
+      for (const w of [w1, w2, w3]) {
         w.on('failed', (job, err) => {
           deps.log.error({ queue: w.name, jobId: job?.id, attempt: job?.attemptsMade, err }, 'job failed');
           // Report only when the last attempt failed, not on every retry.
@@ -56,12 +67,12 @@ export function createQueues(connection: Redis): Queues {
         w.on('error', (err) => deps.log.error({ queue: w.name, err }, 'worker error'));
         workers.push(w);
       }
-      return [w1, w2];
+      return [w1, w2, w3];
     },
 
     async close() {
       await Promise.all(workers.map((w) => w.close()));
-      await Promise.all([runs.close(), reminders.close()]);
+      await Promise.all([runs.close(), reminders.close(), costs.close()]);
     },
   };
 }

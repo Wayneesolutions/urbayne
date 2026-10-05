@@ -20,7 +20,9 @@ const schema = z.object({
   VAPI_API_KEY: z.string().optional(),
   VAPI_PHONE_NUMBER_ID: z.string().optional(),
   VAPI_ASSISTANT_ID: z.string().optional(),
-  VAPI_WEBHOOK_SECRET: z.string().optional(),
+  VAPI_WEBHOOK_SECRET: z.string().min(16).optional(),
+  // Keep Vapi's audio recordings of calls. Off by default: a voter's voice is personal data and nothing here needs it.
+  VAPI_RECORDING: z.enum(['true', 'false']).default('false'),
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_MESSAGING_SERVICE_SID: z.string().optional(),

@@ -6,6 +6,8 @@ export interface CallRequest {
   locale: string;
   script: string;          // approved text; already starts with the disclosure
   survey?: SurveyQuestion[] | null;
+  /** Ask the person for consent on the call (IVR consent). Only set when the approved script really asks the question. */
+  consent?: { textVersion: string; purposes: string[] } | null;
   metadata: { tenantId: string; interactionId: string; runId?: string };
 }
 

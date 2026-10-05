@@ -9,7 +9,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p .",
     "seed:demo": "tsx src/scripts/seed-demo.ts",
-    "purge:due": "tsx src/scripts/purge-due.ts"
+    "purge:due": "tsx src/scripts/purge-due.ts",
+    "vapi:verify": "tsx src/scripts/vapi-verify.ts"
   },
   "dependencies": {
     "@cs/channels": "workspace:*",

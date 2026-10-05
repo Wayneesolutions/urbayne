@@ -1,9 +1,35 @@
-import { and, eq, isNotNull, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { schema, withTenant } from '@cs/db';
-import { now } from '../../lib/util.js';
+import { VapiVoice } from '@cs/channels';
+import { channelEnv, now } from '../../lib/util.js';
 import type { Deps, TenantRow } from '../../types.js';
 
 type Db = Parameters<Parameters<typeof withTenant>[2]>[0];
+
+/**
+ * Deletes the voice provider's own copy of each finished call (transcript, messages, any recording) for a campaign.
+ * Each call is marked once it is gone, so this can be run again after a failure and only retries what is left.
+ * Demo campaigns never reach a real provider, so they have nothing to delete.
+ */
+export async function deleteProviderCallData(deps: Deps, tenantId: string) {
+  const cfg = channelEnv(deps).vapi;
+  const pending = await withTenant(deps.pool, tenantId, (db) => db.select({ id: schema.interactions.id, ref: schema.interactions.providerRef }).from(schema.interactions)
+    .where(and(eq(schema.interactions.provider, 'vapi'), isNotNull(schema.interactions.providerRef), isNull(schema.interactions.providerDataDeletedAt), ne(schema.interactions.status, 'in_progress'))));
+  if (!pending.length) return { deleted: 0, failed: 0, remaining: 0 };
+  if (!cfg) return { deleted: 0, failed: 0, remaining: pending.length, notConfigured: true as const };
+  const vapi = new VapiVoice(cfg);
+  let deleted = 0, failed = 0;
+  for (let k = 0; k < pending.length; k += 5) {
+    await Promise.all(pending.slice(k, k + 5).map(async (p) => {
+      if (await vapi.deleteCall(p.ref!)) {
+        await withTenant(deps.pool, tenantId, (db) => db.update(schema.interactions).set({ providerDataDeletedAt: new Date() }).where(eq(schema.interactions.id, p.id)));
+        deleted++;
+      } else failed++;
+    }));
+  }
+  await withTenant(deps.pool, tenantId, (db) => db.insert(schema.auditLog).values({ tenantId, action: 'purge_provider_data', entity: 'tenant', entityId: tenantId, after: { deleted, failed } }));
+  return { deleted, failed, remaining: failed };
+}
 
 /** Text that replaces a removed street address (the column cannot be empty). */
 export const REMOVED = '[removed]';
@@ -45,7 +71,7 @@ export interface PurgeOptions {
  * Safe to run twice: the second run finds nothing left to do.
  */
 export async function purgeTenantData(deps: Deps, tenantId: string, opts: PurgeOptions) {
-  return withTenant(deps.pool, tenantId, async (db) => {
+  const out = await withTenant(deps.pool, tenantId, async (db) => {
     const [t] = await db.select().from(schema.tenants).where(eq(schema.tenants.id, tenantId));
     if (!t) return null;
     if (t.purgedAt) return { alreadyPurged: true as const };
@@ -70,6 +96,13 @@ export async function purgeTenantData(deps: Deps, tenantId: string, opts: PurgeO
     await db.insert(schema.auditLog).values({ tenantId, actorId: opts.requestedBy, action: 'purge_personal_data', entity: 'tenant', entityId: tenantId, after: { kind: opts.kind, ...counts } });
     return { alreadyPurged: false as const, counts };
   });
+  if (!out || out.alreadyPurged) return out;
+  // After our own data is gone, remove the voice provider's copy of every finished call too (retried by the owner if some fail).
+  const providerData = await deleteProviderCallData(deps, tenantId).catch((e) => {
+    deps.log.error({ tenantId, err: e }, 'provider data deletion failed');
+    return { deleted: 0, failed: -1, remaining: -1 };
+  });
+  return { ...out, providerData };
 }
 
 /** What the retention job would do today, without doing it. */

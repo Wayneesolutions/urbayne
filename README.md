@@ -128,11 +128,16 @@ India SMS must be sent under a DLT-registered template and sender header, and th
 - **Shift reminders** in India use the registered, certified template with `templateKey: "shift_reminder"` (suggested text: `{#var#}: reminder, {#var#}, {#var#}. Reply STOP to opt out.` for campaign, shift, day and time). A variable over 30 characters stops the whole send. Failed sends are not marked as reminded, so they can be retried.
 - **Login codes**: `OTP_PROVIDER=dlt` with `DLT_OTP_TEMPLATE_ID` and `DLT_OTP_TEMPLATE_TEXT` (one `{#var#}` for the code); checked at startup.
 
+## Vapi live calls (P0 item 5)
+
+The adapter and the end-of-call handling were checked against Vapi's public docs and rewritten where they were wrong: `endedReason` is mapped properly (busy, voicemail and silence are "not answered"; start errors and unknown reasons are failures, not completed calls), answers are kept only if they match the survey that was asked, each call carries its own structured-data schema, the webhook address and secret are set per call, audio recording is off by default, a cost of 0 in the webhook is looked up again at Vapi and charged to the spending register, and when a campaign's data is deleted the calls are deleted at Vapi too (`DELETE /call/{id}`, retried with `POST /api/t/:tenantId/privacy/provider-data`).
+
+**No real call has been placed from this code.** `pnpm --filter @cs/api vapi:verify --call +<your number>` checks your account and places one real test call; see [docs/vapi-setup.md](docs/vapi-setup.md) for the assistant setup, what is verified and what is not.
+
 ## Known limits (Phase 1)
 
 - Read-aloud uses the phone's built-in voice in the demo; production should ship pre-recorded Punjabi and Hindi audio.
 - The voter page and dashboard load Google Fonts; self-host them for low-data users.
-- `VapiVoice` request fields and the webhook payload must be checked against current Vapi docs before the first live call.
 - India live voice stays blocked until calling hours are confirmed.
 
 ## Phase 2: ground game and money (built)

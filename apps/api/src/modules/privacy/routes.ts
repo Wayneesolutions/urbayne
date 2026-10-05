@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { HttpError, ah } from '../../lib/http.js';
 import { loadTenant, requireRole } from '../../middleware/auth.js';
 import { withTenant } from '@cs/db';
-import { eraseContact, privacyStatus, purgeTenantData } from './purge.js';
+import { deleteProviderCallData, eraseContact, privacyStatus, purgeTenantData } from './purge.js';
 import { now } from '../../lib/util.js';
 import type { Deps } from '../../types.js';
 
@@ -31,6 +31,13 @@ export function privacyRoutes(deps: Deps) {
     const out = await purgeTenantData(deps, t.id, { kind: 'owner_request', requestedBy: req.user!.id });
     if (out && out.alreadyPurged) throw new HttpError(409, 'ALREADY_PURGED');
     res.json(out);
+  }));
+
+  /** Retry deleting the voice provider's copy of this campaign's calls (after a purge, if some deletions failed). */
+  r.post('/provider-data', requireRole('owner'), ah(async (req, res) => {
+    const t = req.tenant!;
+    if (!t.purgedAt) throw new HttpError(409, 'NOT_PURGED_YET', 'Provider data is deleted as part of the personal data deletion.');
+    res.json(await deleteProviderCallData(deps, t.id));
   }));
 
   /** Erase one person (they asked to be forgotten). Their number stays only as a one-way hash on the do-not-contact list. */

@@ -5,13 +5,14 @@ import { schema, withTenant } from '@cs/db';
 import { HttpError, ah } from '../../lib/http.js';
 import { recordOutcome } from './runner.js';
 import { recordIvrConsent } from '../privacy/consent.js';
-import { syncRunCost } from './cost.js';
+import { reconcileCallCost, syncRunCost } from './cost.js';
+import { parseEndOfCall } from './vapi-report.js';
 import type { Deps } from '../../types.js';
 
 /**
- * Vapi end-of-call webhook for live tenants. Payload fields follow Vapi's
- * "end-of-call-report" server message; verify against current Vapi docs.
- * Survey answers are expected in structured analysis data as { answers: { key: value } }.
+ * Vapi end-of-call webhook for live tenants (message type "end-of-call-report", parsed by vapi-report.ts).
+ * The call is matched to our interaction through the metadata we sent when placing it, and only if it is still
+ * in progress, so a repeated delivery changes nothing.
  */
 export function vapiWebhook(deps: Deps) {
   const r = Router();
@@ -23,32 +24,40 @@ export function vapiWebhook(deps: Deps) {
     }
     const msg = req.body?.message;
     if (msg?.type !== 'end-of-call-report') return res.json({ ignored: true });
-    const meta = msg.call?.metadata ?? msg.call?.assistantOverrides?.metadata ?? {};
-    const { tenantId, interactionId } = meta as { tenantId?: string; interactionId?: string };
-    if (!tenantId || !interactionId) return res.json({ ignored: true });
-    const answers = (msg.analysis?.structuredData?.answers ?? {}) as Record<string, string>;
-    const optOut = Boolean(msg.analysis?.structuredData?.optOut);
-    // Vapi reports the total call cost in USD; keep it so it can be charged to the campaign spending register.
-    const rawCost = Number(msg.cost ?? msg.call?.cost);
-    const costUsdMicros = Number.isFinite(rawCost) && rawCost >= 0 ? Math.round(rawCost * 1_000_000) : null;
-    await withTenant(deps.pool, tenantId, async (db) => {
+    const head = parseEndOfCall(msg);
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!head.tenantId || !head.interactionId || !UUID.test(head.tenantId) || !UUID.test(head.interactionId)) return res.json({ ignored: true });
+    const { tenantId, interactionId } = head;
+
+    const needsCostLookup = await withTenant(deps.pool, tenantId, async (db) => {
       const [i] = await db.select().from(schema.interactions).where(eq(schema.interactions.id, interactionId));
-      if (!i || i.status !== 'in_progress') return;
-      const ended = msg.endedReason === 'customer-did-not-answer' ? 'no_answer' : 'completed';
+      if (!i || i.status !== 'in_progress') return false;
+      // Parse again with the survey that was actually asked, so answers that do not match it are dropped.
+      const [item] = i.contentItemId ? await db.select().from(schema.contentItems).where(eq(schema.contentItems.id, i.contentItemId)) : [];
+      const p = parseEndOfCall(msg, item?.survey);
+      if (p.hasRecording) deps.log.warn({ interactionId }, 'vapi sent a recording although recording is switched off for calls from this platform');
+
       await db.update(schema.interactions).set({
-        status: ended, endedAt: new Date(), durationSec: Math.round(Number(msg.durationSeconds ?? 0)),
-        transcript: typeof msg.transcript === 'string' ? msg.transcript : null, optedOut: optOut, costUsdMicros, updatedAt: new Date(),
+        status: p.status, endedAt: new Date(), durationSec: p.durationSec, transcript: p.transcript,
+        optedOut: p.optOut, costUsdMicros: p.costUsdMicros, providerRef: i.providerRef ?? p.providerRef ?? null, updatedAt: new Date(),
       }).where(eq(schema.interactions.id, i.id));
-      if (costUsdMicros && i.runId) {
+      if (p.costUsdMicros && i.runId) {
         const [tenant] = await db.select().from(schema.tenants).where(eq(schema.tenants.id, tenantId));
         if (tenant) await syncRunCost(db, tenant, i.runId, deps.env);
       }
-      if (ended === 'completed' && i.contactId) {
-        await recordOutcome(db, tenantId, i.id, i.contactId, answers, optOut);
-        // Consent given by pressing a key on the call (only when the provider says which consent text was played).
-        if (!optOut) await recordIvrConsent(db, tenantId, i.id, i.contactId, String(msg.analysis?.structuredData?.locale ?? 'en'), msg.analysis?.structuredData?.consent);
+      if (p.status === 'completed' && i.contactId) {
+        await recordOutcome(db, tenantId, i.id, i.contactId, p.answers, p.optOut);
+        // Consent given on the call itself (only recorded when the provider says which consent text was played).
+        if (!p.optOut) await recordIvrConsent(db, tenantId, i.id, i.contactId, p.locale ?? item?.locale ?? 'en', p.consent);
       }
+      return p.costUsdMicros === null && p.status !== 'failed';
     });
+
+    // Vapi's webhook copy of the cost can be missing or 0 before billing is final: ask again a little later.
+    if (needsCostLookup) {
+      if (deps.queues) await deps.queues.enqueueCallCost(tenantId, interactionId).catch((e) => deps.log.error({ err: e }, 'could not queue cost lookup'));
+      else setTimeout(() => reconcileCallCost(deps, tenantId, interactionId).catch(() => {}), 60_000).unref();
+    }
     res.json({ ok: true });
   }));
   return r;

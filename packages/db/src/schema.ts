@@ -180,6 +180,8 @@ export const interactions = pgTable('interactions', {
   followUp: boolean('follow_up').notNull().default(false),
   /** Provider-reported cost in millionths of a US dollar (null until the provider reports it). */
   costUsdMicros: bigint('cost_usd_micros', { mode: 'number' }),
+  /** Set once the voice provider's copy of this call (transcript, recording) has been deleted. */
+  providerDataDeletedAt: timestamp('provider_data_deleted_at', { withTimezone: true }),
   ...stamps,
 });
 

@@ -17,11 +17,11 @@ describe('usdMicrosToMinor', () => {
 const OWNER_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
 (OWNER_URL && APP_URL ? describe : describe.skip)('Call cost reaches the finance register (integration)', () => {
-  const env = testEnv({ VAPI_WEBHOOK_SECRET: 'hook-secret', FX_USD_TO_INR: '85', FX_USD_TO_CAD: '1.4' });
+  const env = testEnv({ VAPI_WEBHOOK_SECRET: 'hook-secret-0123456789', FX_USD_TO_INR: '85', FX_USD_TO_CAD: '1.4' });
   let owner: pg.Pool, pool: pg.Pool, app: ReturnType<typeof createApp>, token = '', tenantId = '', runId = '';
   const ids: string[] = [];
   const auth = () => ({ Authorization: `Bearer ${token}` });
-  const report = (interactionId: string, cost: number) => request(app).post('/webhooks/vapi').set('x-vapi-secret', 'hook-secret').send({
+  const report = (interactionId: string, cost: number) => request(app).post('/webhooks/vapi').set('x-vapi-secret', 'hook-secret-0123456789').send({
     message: { type: 'end-of-call-report', cost, durationSeconds: 60, transcript: 'x', endedReason: 'hangup', call: { metadata: { tenantId, interactionId } }, analysis: { structuredData: { answers: {} } } },
   });
   const reopen = (id: string) => owner.query("UPDATE interactions SET status = 'in_progress' WHERE id = $1", [id]);
