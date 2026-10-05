@@ -17,7 +17,7 @@ const run = OWNER_URL && APP_URL ? describe : describe.skip;
 const env: Env = {
   APP_DATABASE_URL: APP_URL ?? '', JWT_SECRET: 'test-secret-test-secret', JWT_REFRESH_SECRET: 'test-refresh-test-refresh',
   DEPLOY_REGION: 'IN', OTP_PROVIDER: 'console', PHONE_ENC_KEY: randomBytes(32).toString('base64'),
-  PHONE_HASH_KEY: randomBytes(32).toString('base64'), PORT: 0, PUBLIC_BASE_URL: 'http://test.local', ANTHROPIC_MODEL: 'x', NODE_ENV: 'test', DEV_RETURN_OTP: 'false',
+  PHONE_HASH_KEY: randomBytes(32).toString('base64'), PORT: 0, PUBLIC_BASE_URL: 'http://test.local', ANTHROPIC_MODEL: 'x', NODE_ENV: 'test', DEV_RETURN_OTP: 'false', FX_USD_TO_INR: 85, FX_USD_TO_CAD: 1.4,
 };
 
 run('Phase 1 (integration)', () => {
