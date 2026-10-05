@@ -10,7 +10,7 @@ import { channelEnv, now } from '../../lib/util.js';
 import { loadTenant, requireRole } from '../../middleware/auth.js';
 import { planRoute } from './route.js';
 import { upsertEventExpense } from '../finance/routes.js';
-import type { Deps } from '../../types.js';
+import type { Deps, TenantRow } from '../../types.js';
 
 const MANAGERS = ['owner', 'manager', 'coordinator'] as const;
 /** Events that always need official permission in India (rallies, public meetings, vehicles). */
@@ -98,33 +98,18 @@ export function opsRoutes(deps: Deps) {
     res.json({ ok: true });
   }));
 
-  /** Shift reminders by SMS, only to volunteers who agreed to reminder texts. */
+  /** Shift reminders by SMS, only to volunteers who agreed to reminder texts. With Redis it runs as a background job. */
   r.post('/shifts/:shiftId/remind', requireRole(...MANAGERS), ah(async (req, res) => {
     const t = req.tenant!;
-    const sms = (() => { try { return smsFor({ isDemo: t.isDemo, region: t.region }, channelEnv(deps)); } catch { return null; } })();
-    if (!sms) throw new HttpError(422, 'SMS_PROVIDER_NOT_CONFIGURED', t.region === 'IN' ? 'India SMS needs the DLT provider set up first.' : 'SMS provider not configured.');
-    const out = await withTenant(pool, t.id, async (db) => {
-      const [shift] = await db.select().from(schema.shifts).where(eq(schema.shifts.id, req.params.shiftId!));
-      if (!shift) throw new HttpError(404, 'NOT_FOUND');
-      const rows = await db.select({ a: schema.shiftAssignments, c: schema.contacts }).from(schema.shiftAssignments)
-        .innerJoin(schema.contacts, eq(schema.contacts.id, schema.shiftAssignments.contactId))
-        .where(and(eq(schema.shiftAssignments.shiftId, shift.id), isNull(schema.shiftAssignments.remindedAt)));
-      const consented = rows.length ? await db.select().from(schema.consents).where(and(
-        inArray(schema.consents.contactId, rows.map((x) => x.c.id)), eq(schema.consents.channel, 'sms'), eq(schema.consents.purpose, 'reminder'), isNull(schema.consents.withdrawnAt),
-      )) : [];
-      let sent = 0, skipped = 0;
-      const when = shift.startsAt.toLocaleString(t.region === 'IN' ? 'en-IN' : 'en-CA', { timeZone: t.timeZone, weekday: 'short', hour: 'numeric', minute: '2-digit' });
-      for (const { a, c } of rows) {
-        if (c.optedOut || !consented.some((x) => x.contactId === c.id)) { skipped++; continue; }
-        const [i] = await db.insert(schema.interactions).values({ tenantId: t.id, contactId: c.id, channel: 'sms', direction: 'outbound', status: 'in_progress' }).returning();
-        const r2 = await sms.send({ to: decrypt(c.phoneEnc, env.PHONE_ENC_KEY), body: `${t.campaignName}: reminder, ${shift.title}, ${when}. Reply STOP to opt out.`, metadata: { tenantId: t.id, interactionId: i!.id } });
-        await db.update(schema.interactions).set({ status: r2.status === 'failed' ? 'failed' : 'completed', provider: r2.provider, providerRef: r2.providerRef, startedAt: now(deps) }).where(eq(schema.interactions.id, i!.id));
-        await db.update(schema.shiftAssignments).set({ remindedAt: now(deps) }).where(eq(schema.shiftAssignments.id, a.id));
-        sent++;
-      }
-      return { sent, skipped, simulated: sms.simulated };
-    });
-    res.json(out);
+    const unavailable = reminderSmsProblem(deps, t);
+    if (unavailable) throw new HttpError(422, 'SMS_PROVIDER_NOT_CONFIGURED', unavailable);
+    const exists = await withTenant(pool, t.id, async (db) => (await db.select({ id: schema.shifts.id }).from(schema.shifts).where(eq(schema.shifts.id, req.params.shiftId!)))[0]);
+    if (!exists) throw new HttpError(404, 'NOT_FOUND');
+    if (deps.queues) {
+      await deps.queues.enqueueReminders(t.id, req.params.shiftId!);
+      return res.status(202).json({ queued: true });
+    }
+    res.json(await sendShiftReminders(deps, t, req.params.shiftId!));
   }));
 
   // ----- lawn signs (Canada) -----
@@ -157,4 +142,45 @@ export function opsRoutes(deps: Deps) {
   }));
 
   return r;
+}
+
+function smsFor_(deps: Deps, t: TenantRow) {
+  try { return smsFor({ isDemo: t.isDemo, region: t.region }, channelEnv(deps)); } catch { return null; }
+}
+
+/** Why reminders cannot be sent for this campaign right now, or null when they can. */
+export function reminderSmsProblem(deps: Deps, t: TenantRow): string | null {
+  if (smsFor_(deps, t)) return null;
+  return t.region === 'IN' ? 'India SMS needs the DLT provider set up first.' : 'SMS provider not configured.';
+}
+
+/**
+ * Sends reminders for one shift. Safe to run from several workers at once: assignment rows are
+ * locked with FOR UPDATE SKIP LOCKED, so a volunteer is never texted twice for the same shift.
+ */
+export async function sendShiftReminders(deps: Deps, t: TenantRow, shiftId: string) {
+  const sms = smsFor_(deps, t);
+  if (!sms) throw new HttpError(422, 'SMS_PROVIDER_NOT_CONFIGURED', reminderSmsProblem(deps, t) ?? undefined);
+  return withTenant(deps.pool, t.id, async (db) => {
+    const [shift] = await db.select().from(schema.shifts).where(eq(schema.shifts.id, shiftId));
+    if (!shift) throw new HttpError(404, 'NOT_FOUND');
+    const rows = await db.select({ a: schema.shiftAssignments, c: schema.contacts }).from(schema.shiftAssignments)
+      .innerJoin(schema.contacts, eq(schema.contacts.id, schema.shiftAssignments.contactId))
+      .where(and(eq(schema.shiftAssignments.shiftId, shift.id), isNull(schema.shiftAssignments.remindedAt)))
+      .for('update', { of: schema.shiftAssignments, skipLocked: true });
+    const consented = rows.length ? await db.select().from(schema.consents).where(and(
+      inArray(schema.consents.contactId, rows.map((x) => x.c.id)), eq(schema.consents.channel, 'sms'), eq(schema.consents.purpose, 'reminder'), isNull(schema.consents.withdrawnAt),
+    )) : [];
+    let sent = 0, skipped = 0;
+    const when = shift.startsAt.toLocaleString(t.region === 'IN' ? 'en-IN' : 'en-CA', { timeZone: t.timeZone, weekday: 'short', hour: 'numeric', minute: '2-digit' });
+    for (const { a, c } of rows) {
+      if (c.optedOut || !consented.some((x) => x.contactId === c.id)) { skipped++; continue; }
+      const [i] = await db.insert(schema.interactions).values({ tenantId: t.id, contactId: c.id, channel: 'sms', direction: 'outbound', status: 'in_progress' }).returning();
+      const r2 = await sms.send({ to: decrypt(c.phoneEnc, deps.env.PHONE_ENC_KEY), body: `${t.campaignName}: reminder, ${shift.title}, ${when}. Reply STOP to opt out.`, metadata: { tenantId: t.id, interactionId: i!.id } });
+      await db.update(schema.interactions).set({ status: r2.status === 'failed' ? 'failed' : 'completed', provider: r2.provider, providerRef: r2.providerRef, startedAt: now(deps) }).where(eq(schema.interactions.id, i!.id));
+      await db.update(schema.shiftAssignments).set({ remindedAt: now(deps) }).where(eq(schema.shiftAssignments.id, a.id));
+      sent++;
+    }
+    return { sent, skipped, simulated: sms.simulated };
+  });
 }

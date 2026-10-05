@@ -8,6 +8,8 @@
     "typecheck": "turbo run typecheck",
     "dev:api": "pnpm --filter @cs/api dev",
     "db:up": "docker compose up -d",
+    "redis:local": "node scripts/local-redis.mjs",
+    "worker": "pnpm --filter @cs/api worker",
     "db:migrate": "pnpm --filter @cs/db migrate",
     "guardrails": "node scripts/guardrails.mjs",
     "dev:dashboard": "pnpm --filter @cs/dashboard dev",

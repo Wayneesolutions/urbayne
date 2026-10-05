@@ -87,7 +87,7 @@ export function callRoutes(deps: Deps) {
     });
     if ('blocked' in result && result.blocked) return res.status(422).json({ error: 'RUN_BLOCKED', reasons: result.blocked.reasons });
     if (wait) await processRun(deps, t.id, req.params.runId!);
-    else kickRun(deps, t.id, req.params.runId!);
+    else await kickRun(deps, t.id, req.params.runId!);
     res.json({ status: 'running', ...result });
   }));
 
@@ -101,7 +101,7 @@ export function callRoutes(deps: Deps) {
         return out;
       });
       if (!row) throw new HttpError(409, `CANNOT_${action.toUpperCase()}`);
-      if (to === 'running') kickRun(deps, t.id, row.id);
+      if (to === 'running') await kickRun(deps, t.id, row.id);
       res.json(row);
     }));
   }
