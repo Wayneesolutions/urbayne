@@ -112,6 +112,13 @@ Without `REDIS_URL` (local dev, tests) everything runs in memory in one process,
 
 Local Redis without Docker (Windows): download `Redis-x64-5.0.14.1.zip` from github.com/tporadowski/redis/releases, unzip it into `.local-redis/`, run `pnpm redis:local` (port 6380), then `TEST_REDIS_URL=redis://localhost:6380/15 pnpm test`. BullMQ recommends Redis 6.2 or newer, so use Redis 7 in production (the Windows build is 5.0 and only prints a warning).
 
+## Observability (P0 item 10)
+
+- **Logs**: one JSON line per request (`reqId`, method, path without query string, status, ms, tenant and user ids). Request bodies, tokens, OTP codes, transcripts and phone numbers are never logged (redaction list in `lib/logger.ts`, phone numbers inside messages are masked). Every response carries `X-Request-Id`; send your own to trace a call end to end. `LOG_LEVEL` sets the level.
+- **Errors**: set `SENTRY_DSN` to send unexpected errors (5xx, failed queue jobs after their last retry) to Sentry, tagged with region, request id and campaign id. Before sending, request bodies, cookies, auth headers, user info and phone numbers are stripped (`scrubEvent`). Expected errors (401, 404, validation) are logged but not reported. Without a DSN nothing is sent.
+- **Readiness**: `GET /ready` returns 200 when the database (and Redis, if configured) answer, 503 otherwise, with no details. Use it for the load balancer; `GET /health` stays a plain liveness check.
+- **Provider cost dashboard**: `GET /api/t/:tenantId/costs?days=30` (owner, manager, finance agent) shows one campaign's AI call spend by day and by run and its share of the spending limit. `GET /api/admin/costs?days=30` (Wayne E Solutions staff only) shows spend per campaign and per region across the platform. Costs come from the provider's end-of-call report (see call cost in the finance register).
+
 ## Known limits (Phase 1)
 
 - Read-aloud uses the phone's built-in voice in the demo; production should ship pre-recorded Punjabi and Hindi audio.

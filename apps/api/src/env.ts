@@ -31,6 +31,12 @@ const schema = z.object({
   FX_USD_TO_CAD: z.coerce.number().positive().default(1.4),
   // Signs evidence PDFs (HMAC). Required in production; in development it falls back to a key derived from JWT_SECRET.
   EVIDENCE_SIGNING_KEY: z.string().min(32).optional(),
+  // Error reports (Sentry). Optional: without a DSN errors are only in the logs.
+  SENTRY_DSN: z.string().url().optional(),
+  SENTRY_ENVIRONMENT: z.string().optional(),
+  SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0),
+  // Log level: fatal | error | warn | info | debug | trace | silent. Tests default to silent.
+  LOG_LEVEL: z.string().optional(),
   NODE_ENV: z.string().default('development'),
   // DEV/DEMO ONLY: return the OTP in the API response so a demo can log in without SMS.
   DEV_RETURN_OTP: z.enum(['true', 'false']).default('false'),

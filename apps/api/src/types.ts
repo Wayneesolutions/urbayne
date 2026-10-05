@@ -6,6 +6,8 @@ import type { Redis } from 'ioredis';
 import type { RateStore } from './lib/rate-limit.js';
 import type { SessionStore } from './lib/sessions.js';
 import type { Queues } from './lib/queues.js';
+import type { Logger } from 'pino';
+import type { ErrorReporter } from './lib/observability.js';
 
 /** What callers (index.ts, tests) pass in; createApp fills the rest with in-memory defaults. */
 export interface DepsInit {
@@ -17,6 +19,8 @@ export interface DepsInit {
   sessions?: SessionStore;
   /** Background job queues (BullMQ). Without them runs and reminders execute inline in this process. */
   queues?: Queues;
+  log?: Logger;
+  reporter?: ErrorReporter;
   /** Injectable clock (tests and demos). */
   now?: () => Date;
   /** Override channels (tests). */
@@ -28,6 +32,8 @@ export interface DepsInit {
 export interface Deps extends DepsInit {
   rateStore: RateStore;
   sessions: SessionStore;
+  log: Logger;
+  reporter: ErrorReporter;
 }
 
 export type EffectiveRole = Role | 'wes_admin';
@@ -37,6 +43,8 @@ declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
+      /** Request id (also returned as X-Request-Id and attached to error reports). */
+      id?: string;
       user?: { id: string; wes: boolean };
       tenant?: TenantRow;
       role?: EffectiveRole;

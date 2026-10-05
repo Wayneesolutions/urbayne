@@ -48,8 +48,12 @@ export function createQueues(connection: Redis): Queues {
         if (t) await sendShiftReminders(deps, t, job.data.shiftId);
       }, { connection: connection.duplicate(), prefix: QUEUE_PREFIX, concurrency: 2 });
       for (const w of [w1, w2]) {
-        w.on('failed', (job, err) => console.error(`[queue:${w.name}] job ${job?.id} failed:`, err.message));
-        w.on('error', (err) => console.error(`[queue:${w.name}] worker error:`, err.message));
+        w.on('failed', (job, err) => {
+          deps.log.error({ queue: w.name, jobId: job?.id, attempt: job?.attemptsMade, err }, 'job failed');
+          // Report only when the last attempt failed, not on every retry.
+          if (job && job.attemptsMade >= (job.opts.attempts ?? 1)) deps.reporter.capture(err, { job: `${w.name}:${job.id}`, tenantId: (job.data as { tenantId?: string }).tenantId });
+        });
+        w.on('error', (err) => deps.log.error({ queue: w.name, err }, 'worker error'));
         workers.push(w);
       }
       return [w1, w2];

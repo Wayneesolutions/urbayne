@@ -5,14 +5,12 @@ import pg from 'pg';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createApp } from '../src/app.js';
 import type { Env } from '../src/env.js';
+import { testEnv } from './env.js';
 
 const OWNER_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
 const run = OWNER_URL && APP_URL ? describe : describe.skip;
-const env: Env = {
-  APP_DATABASE_URL: APP_URL ?? '', JWT_SECRET: 'test-secret-test-secret', JWT_REFRESH_SECRET: 'test-refresh-test-refresh', DEPLOY_REGION: 'IN', OTP_PROVIDER: 'console',
-  PHONE_ENC_KEY: randomBytes(32).toString('base64'), PHONE_HASH_KEY: randomBytes(32).toString('base64'), PORT: 0, PUBLIC_BASE_URL: 'http://t', ANTHROPIC_MODEL: 'x', NODE_ENV: 'test', DEV_RETURN_OTP: 'true', FX_USD_TO_INR: 85, FX_USD_TO_CAD: 1.4, RUN_WORKERS: 'true', WORKER_CONCURRENCY: 4,
-};
+const env: Env = testEnv();
 
 run('Phase 2 (integration)', () => {
   let owner: pg.Pool, pool: pg.Pool, app: ReturnType<typeof createApp>;
