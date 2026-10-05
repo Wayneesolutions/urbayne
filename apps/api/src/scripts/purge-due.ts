@@ -6,11 +6,12 @@
  */
 import { createPool } from '@cs/db';
 import { loadEnv } from '../env.js';
+import { resolveDeps } from '../app.js';
 import { purgeDueTenants } from '../modules/privacy/purge.js';
 
 const env = loadEnv();
 const pool = createPool(env.APP_DATABASE_URL);
-const results = await purgeDueTenants({ env, pool });
+const results = await purgeDueTenants(resolveDeps({ env, pool }));
 console.log(results.length ? JSON.stringify(results, null, 2) : 'nothing due');
 await pool.end();
 process.exit(results.some((r) => r.error) ? 1 : 0);

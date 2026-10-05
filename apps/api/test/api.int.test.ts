@@ -27,7 +27,7 @@ const baseEnv = (region: 'IN' | 'CA'): Env => ({
   PHONE_HASH_KEY: KEY_HASH,
   PORT: 0,
   PUBLIC_BASE_URL: 'http://localhost:4000',
-  ANTHROPIC_MODEL: 'claude-sonnet-5', NODE_ENV: 'test', DEV_RETURN_OTP: 'false', FX_USD_TO_INR: 85, FX_USD_TO_CAD: 1.4,
+  ANTHROPIC_MODEL: 'claude-sonnet-5', NODE_ENV: 'test', DEV_RETURN_OTP: 'false', FX_USD_TO_INR: 85, FX_USD_TO_CAD: 1.4, RUN_WORKERS: 'true', WORKER_CONCURRENCY: 4,
 });
 const KEY_ENC = key();
 const KEY_HASH = key();

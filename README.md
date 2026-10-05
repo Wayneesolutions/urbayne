@@ -97,11 +97,23 @@ Demo flow that sells: open the voter page on a phone, pick an area, press the bi
 
 Note: the Canada demo follows real CRTC hours in Winnipeg time, so outside 9:00 to 21:30 on weekdays (10:00 to 18:00 on weekends) its run is blocked. That is the product working, and worth showing.
 
+
 **Evidence pack (PDF):** `GET /api/t/:tenantId/calls/runs/:runId/evidence.pdf` is a readable, sealed document (campaign, approved script and certificate number, rules check, results, audit trail; Punjabi and Hindi text supported). Every download records a seal (SHA-256 of the data + HMAC with `EVIDENCE_SIGNING_KEY`) that anyone can check at `/api/public/evidence/:sealId`. The seal proves the document came from the system and was not altered; it is not a government certificate or a CA digital signature.
+## Redis, queues and running several servers (P0 items 2 and 3)
+
+With `REDIS_URL` set (required when `NODE_ENV=production`), everything that must be shared between servers is:
+
+- **Rate limits**: per-IP limits on OTP request/verify and the public voter endpoints are counted in Redis (atomic INCR + expiry), so spreading requests over servers does not help an abuser. If Redis is briefly down the limiter lets requests through and logs; per-phone OTP limits stay in the database.
+- **Sessions**: each login creates a session, and a refresh token only works while its session exists. `POST /api/auth/logout` ends one device, `POST /api/auth/logout-all` ends all of them. (The 15-minute access token simply expires.)
+- **Call runs and shift reminders** run as BullMQ jobs (`call-runs`, `reminders`). Starting or resuming a run queues one job per run (a second kick is a no-op). `RUN_WORKERS=true` runs workers inside the API process; in production run dedicated workers with `pnpm worker` and set `RUN_WORKERS=false` on API servers.
+- **Row locking**: workers claim each call with `SELECT ... FOR UPDATE SKIP LOCKED` and mark it `in_progress` before the provider is called, so two workers can never dial the same voter. The provider call happens outside any database transaction. A call claimed by a worker that then died (no provider reference after 10 minutes) is closed as `failed` and never re-dialled. Shift reminders use the same locking.
+
+Without `REDIS_URL` (local dev, tests) everything runs in memory in one process, as before.
+
+Local Redis without Docker (Windows): download `Redis-x64-5.0.14.1.zip` from github.com/tporadowski/redis/releases, unzip it into `.local-redis/`, run `pnpm redis:local` (port 6380), then `TEST_REDIS_URL=redis://localhost:6380/15 pnpm test`. BullMQ recommends Redis 6.2 or newer, so use Redis 7 in production (the Windows build is 5.0 and only prints a warning).
 
 ## Known limits (Phase 1)
 
-- Call runs use an in-process runner; move to Redis + BullMQ before live campaigns.
 - Read-aloud uses the phone's built-in voice in the demo; production should ship pre-recorded Punjabi and Hindi audio.
 - The voter page and dashboard load Google Fonts; self-host them for low-data users.
 - `VapiVoice` request fields and the webhook payload must be checked against current Vapi docs before the first live call.

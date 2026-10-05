@@ -7,6 +7,7 @@ import { signAccess, signRefresh, verifyRefresh } from '../lib/jwt.js';
 import { HttpError, ah } from '../lib/http.js';
 import { requireUser } from '../middleware/auth.js';
 import { otpSenderFor } from '../lib/otp-sender.js';
+import { rateLimit } from '../lib/rate-limit.js';
 import type { Deps } from '../types.js';
 
 const OTP_TTL_MS = 5 * 60_000;
@@ -18,7 +19,8 @@ export function authRoutes(deps: Deps) {
   const { env, pool } = deps;
   const otpSender = deps.otpSender ?? otpSenderFor(env, OTP_TTL_MS / 60_000);
 
-  r.post('/otp/request', ah(async (req, res) => {
+  // Per-IP limits on top of the per-phone database limit below; shared across servers when Redis is configured.
+  r.post('/otp/request', rateLimit(deps.rateStore, 20, 10 * 60_000), ah(async (req, res) => {
     const phone = normalisePhone(z.object({ phone: z.string() }).parse(req.body).phone);
     const phoneHash = hashPhone(phone, env.PHONE_HASH_KEY);
     const code = newOtp();
@@ -41,7 +43,7 @@ export function authRoutes(deps: Deps) {
     res.json(env.DEV_RETURN_OTP === 'true' ? { sent: true, devCode: code } : { sent: true });
   }));
 
-  r.post('/otp/verify', ah(async (req, res) => {
+  r.post('/otp/verify', rateLimit(deps.rateStore, 30, 10 * 60_000), ah(async (req, res) => {
     const body = z.object({ phone: z.string(), code: z.string().regex(/^\d{6}$/) }).parse(req.body);
     const phone = normalisePhone(body.phone);
     const phoneHash = hashPhone(phone, env.PHONE_HASH_KEY);
@@ -64,20 +66,34 @@ export function authRoutes(deps: Deps) {
       return created!;
     });
     if (!user) throw new HttpError(401, 'OTP_INVALID');
+    const sid = await deps.sessions.create(user.id);
     res.json({
       accessToken: signAccess({ sub: user.id, wes: user.isWesAdmin }, env.JWT_SECRET),
-      refreshToken: signRefresh(user.id, env.JWT_REFRESH_SECRET),
+      refreshToken: signRefresh(user.id, sid, env.JWT_REFRESH_SECRET),
       user: { id: user.id, name: user.name, locale: user.locale },
     });
   }));
 
   r.post('/refresh', ah(async (req, res) => {
     const { refreshToken } = z.object({ refreshToken: z.string() }).parse(req.body);
-    let sub: string;
-    try { sub = verifyRefresh(refreshToken, env.JWT_REFRESH_SECRET); } catch { throw new HttpError(401, 'UNAUTHENTICATED'); }
+    let sub: string, sid: string;
+    try { ({ sub, sid } = verifyRefresh(refreshToken, env.JWT_REFRESH_SECRET)); } catch { throw new HttpError(401, 'UNAUTHENTICATED'); }
+    if (!(await deps.sessions.isValid(sid, sub))) throw new HttpError(401, 'SESSION_ENDED');
     const [user] = await withTenant(pool, null, (db) => db.select().from(schema.users).where(eq(schema.users.id, sub)));
     if (!user) throw new HttpError(401, 'UNAUTHENTICATED');
     res.json({ accessToken: signAccess({ sub: user.id, wes: user.isWesAdmin }, env.JWT_SECRET) });
+  }));
+
+  /** Ends this device's session: its refresh token stops working at once (the 15-minute access token simply expires). */
+  r.post('/logout', ah(async (req, res) => {
+    const { refreshToken } = z.object({ refreshToken: z.string() }).parse(req.body);
+    try { await deps.sessions.revoke(verifyRefresh(refreshToken, env.JWT_REFRESH_SECRET).sid); } catch { /* already invalid: nothing to end */ }
+    res.json({ ok: true });
+  }));
+
+  /** Signs the user out of every device. */
+  r.post('/logout-all', requireUser(deps), ah(async (req, res) => {
+    res.json({ ok: true, ended: await deps.sessions.revokeAll(req.user!.id) });
   }));
 
   r.get('/me', requireUser(deps), ah(async (req, res) => {

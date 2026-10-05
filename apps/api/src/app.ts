@@ -21,11 +21,23 @@ import { fieldRoutes } from './modules/field/routes.js';
 import { opsRoutes } from './modules/ops/routes.js';
 import { financeRoutes } from './modules/finance/routes.js';
 import { privacyRoutes } from './modules/privacy/routes.js';
-import type { Deps } from './types.js';
+import { MemoryRateStore, RedisRateStore } from './lib/rate-limit.js';
+import { MemorySessions, RedisSessions } from './lib/sessions.js';
+import type { Deps, DepsInit } from './types.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-export function createApp(deps: Deps) {
+/** Fills in rate limits and sessions: Redis-backed when Redis is configured, in-memory otherwise (one server only). */
+export function resolveDeps(init: DepsInit): Deps {
+  return {
+    ...init,
+    rateStore: init.rateStore ?? (init.redis ? new RedisRateStore(init.redis) : new MemoryRateStore()),
+    sessions: init.sessions ?? (init.redis ? new RedisSessions(init.redis) : new MemorySessions()),
+  };
+}
+
+export function createApp(init: DepsInit) {
+  const deps = resolveDeps(init);
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1);

@@ -6,7 +6,7 @@ import { schema, withTenant } from '@cs/db';
 import { getRegion } from '@cs/regions';
 import { HttpError, ah } from '../../lib/http.js';
 import { encrypt, hashPhone, normalisePhone } from '../../lib/crypto.js';
-import { rateLimit } from '../../lib/util.js';
+import { rateLimit } from '../../lib/rate-limit.js';
 import { verifySignature } from '../../lib/seal.js';
 import { evidenceKey } from '../../lib/evidence-key.js';
 import { answer, assistantText } from '../assistant/answer.js';
@@ -24,7 +24,7 @@ async function tenantIdBySlug(deps: Deps, slug: string): Promise<string> {
 export function publicRoutes(deps: Deps) {
   const r = Router();
   const { pool, env } = deps;
-  r.use(rateLimit(60, 60_000));
+  r.use(rateLimit(deps.rateStore, 60, 60_000));
 
   /** Anyone holding an evidence PDF can check its seal here. Declared before /:slug so it is not read as a campaign slug. */
   r.get('/evidence/:sealId', ah(async (req, res) => {
@@ -89,7 +89,7 @@ export function publicRoutes(deps: Deps) {
     res.json(out);
   }));
 
-  r.post('/:slug/signup', rateLimit(10, 60_000), ah(async (req, res) => {
+  r.post('/:slug/signup', rateLimit(deps.rateStore, 10, 60_000), ah(async (req, res) => {
     const id = await tenantIdBySlug(deps, req.params.slug!);
     const b = z.object({
       name: z.string().max(120).optional(),
@@ -133,7 +133,7 @@ export function publicRoutes(deps: Deps) {
     res.status(201).json({ ok: true });
   }));
 
-  r.post('/:slug/assistant/ask', rateLimit(20, 60_000), ah(async (req, res) => {
+  r.post('/:slug/assistant/ask', rateLimit(deps.rateStore, 20, 60_000), ah(async (req, res) => {
     const id = await tenantIdBySlug(deps, req.params.slug!);
     const b = z.object({ question: z.string().min(2).max(500), locale: z.string().default('en') }).parse(req.body);
     const out = await withTenant(pool, id, async (db) => {

@@ -5,18 +5,14 @@ import pg from 'pg';
 import { randomBytes } from 'node:crypto';
 import { createApp } from '../src/app.js';
 import { purgeDueTenants } from '../src/modules/privacy/purge.js';
-import type { Env } from '../src/env.js';
+import { testEnv } from './env.js';
+import { resolveDeps } from '../src/app.js';
 
 const OWNER_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
 const run = OWNER_URL && APP_URL ? describe : describe.skip;
 
-const env: Env = {
-  APP_DATABASE_URL: APP_URL ?? '', JWT_SECRET: 'test-secret-test-secret', JWT_REFRESH_SECRET: 'test-refresh-test-refresh',
-  DEPLOY_REGION: 'IN', OTP_PROVIDER: 'console', PHONE_ENC_KEY: randomBytes(32).toString('base64'),
-  PHONE_HASH_KEY: randomBytes(32).toString('base64'), PORT: 0, PUBLIC_BASE_URL: 'http://t', ANTHROPIC_MODEL: 'x', NODE_ENV: 'test',
-  DEV_RETURN_OTP: 'true', VAPI_WEBHOOK_SECRET: 'hook-secret',
-} as Env;
+const env = testEnv({ VAPI_WEBHOOK_SECRET: 'hook-secret' });
 
 run('Privacy: consent evidence and data deletion (integration)', () => {
   let owner: pg.Pool, pool: pg.Pool, app: ReturnType<typeof createApp>;
@@ -134,7 +130,7 @@ run('Privacy: consent evidence and data deletion (integration)', () => {
     });
 
     it('does nothing before the date, and refuses a bulk delete before the election is over', async () => {
-      expect(await purgeDueTenants({ env, pool, now: () => clock })).toEqual([]);
+      expect(await purgeDueTenants(resolveDeps({ env, pool, now: () => clock }))).toEqual([]);
       const r = await request(app).post(`/api/t/${tenantId}/privacy/purge`).set(auth()).send({ confirm: 'DELETE' }).expect(409);
       expect(r.body.error).toBe('ELECTION_NOT_OVER');
       await request(app).post(`/api/t/${tenantId}/privacy/purge`).set(auth()).send({}).expect(422);
@@ -149,7 +145,7 @@ run('Privacy: consent evidence and data deletion (integration)', () => {
       const suppressedBefore = (await q('SELECT 1 FROM suppressions WHERE tenant_id = $1', [tenantId])).length;
 
       clock = new Date('2027-03-23T00:00:00Z');
-      const res = await purgeDueTenants({ env, pool, now: () => clock });
+      const res = await purgeDueTenants(resolveDeps({ env, pool, now: () => clock }));
       expect(res).toHaveLength(1);
       expect(res[0]!.counts!.contacts).toBe(peopleBefore);
 
@@ -166,7 +162,7 @@ run('Privacy: consent evidence and data deletion (integration)', () => {
       expect(await q("SELECT 1 FROM data_purges WHERE tenant_id = $1 AND kind = 'retention'", [tenantId])).toHaveLength(1);
 
       // Running again is harmless.
-      expect(await purgeDueTenants({ env, pool, now: () => clock })).toEqual([]);
+      expect(await purgeDueTenants(resolveDeps({ env, pool, now: () => clock }))).toEqual([]);
       const again = await request(app).post(`/api/t/${tenantId}/privacy/purge`).set(auth()).send({ confirm: 'DELETE' }).expect(409);
       expect(again.body.error).toBe('ALREADY_PURGED');
     });
@@ -174,7 +170,7 @@ run('Privacy: consent evidence and data deletion (integration)', () => {
     it('a campaign with no retention set is never deleted automatically', async () => {
       await owner.query('UPDATE tenants SET purged_at = NULL, retention_days = NULL, status = $2 WHERE id = $1', [tenantId, 'active']);
       clock = new Date('2030-01-01T00:00:00Z');
-      expect(await purgeDueTenants({ env, pool, now: () => clock })).toEqual([]);
+      expect(await purgeDueTenants(resolveDeps({ env, pool, now: () => clock }))).toEqual([]);
     });
   });
 });
