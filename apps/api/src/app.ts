@@ -29,6 +29,7 @@ import { serviceRoutes } from './modules/service/routes.js';
 import { servicePublicRoutes } from './modules/service/public.js';
 import { inboundSmsRoutes } from './modules/service/inbound.js';
 import { serviceAdminRoutes } from './modules/service/admin.js';
+import { resultsRoutes } from './modules/results/routes.js';
 import { MemoryRateStore, RedisRateStore } from './lib/rate-limit.js';
 import { MemorySessions, RedisSessions } from './lib/sessions.js';
 import type { Deps, DepsInit } from './types.js';
@@ -99,6 +100,7 @@ export function createApp(init: DepsInit) {
   app.use('/api/t/:tenantId/privacy', authed, privacyRoutes(deps));
   app.use('/api/t/:tenantId/costs', authed, costRoutes(deps));
   app.use('/api/t/:tenantId/service', authed, serviceRoutes(deps));
+  app.use('/api/t/:tenantId/results', authed, resultsRoutes(deps));
   app.use('/api/admin', adminCostRoutes(deps));
   app.use('/api/admin', serviceAdminRoutes(deps));
 

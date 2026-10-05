@@ -10,6 +10,7 @@ import { guessCategory, STATUS_WORDS } from './categories.js';
 import { personForTicket } from './people.js';
 import { queueTicketSms } from './sms.js';
 import { addEvent, createTicket, resolveArea } from './tickets.js';
+import { handleResultsSms, isTeamMember, RESULTS_COMMAND } from '../results/sms.js';
 import type { Deps } from '../../types.js';
 
 /** The office that owns a number people text or call (registered by platform staff). */
@@ -48,6 +49,9 @@ export async function handleInboundSms(deps: Deps, m: InboundSms, opts: { inline
     });
     return '';
   }
+
+  // Agents' results texts (VOTE B045 312, COUNT R3 A 4521 B 3980) go to the results module, not to the ticket desk.
+  if (RESULTS_COMMAND.test(body) && (await isTeamMember(deps, tenantId, from))) return handleResultsSms(deps, tenantId, from, body, m.messageId);
 
   const status = STATUS_CMD.exec(body);
   if (status) {

@@ -40,6 +40,8 @@ export const tenants = pgTable('tenants', {
   /** Personal data is deleted this many days after the election. null = not set, nothing is deleted automatically. */
   retentionDays: integer('retention_days'),
   purgedAt: timestamp('purged_at', { withTimezone: true }),
+  /** Set when the results were frozen into the archive after the election: no more reports are accepted. */
+  resultsArchivedAt: timestamp('results_archived_at', { withTimezone: true }),
   ...stamps,
 });
 
@@ -473,4 +475,89 @@ export const invoices = pgTable('invoices', {
   status: text('status', { enum: ['issued', 'paid', 'void'] }).notNull().default('issued'),
   issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
   paidAt: timestamp('paid_at', { withTimezone: true }),
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Tool 7: poll day and counting day results. Reported by the campaign's own agents; official figures are typed in by the team.
+
+export const pollingStations = pgTable('polling_stations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  geoAreaId: uuid('geo_area_id').notNull(),
+  electors: integer('electors'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const resultAgents = pgTable('result_agents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  scope: text('scope', { enum: ['station', 'counting'] }).notNull(),
+  geoAreaId: uuid('geo_area_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const candidates = pgTable('candidates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  code: text('code').notNull(),
+  name: text('name').notNull(),
+  party: text('party'),
+  isOurs: boolean('is_ours').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const turnoutReports = pgTable('turnout_reports', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  geoAreaId: uuid('geo_area_id').notNull(),
+  agentId: uuid('agent_id'),
+  clientUuid: uuid('client_uuid').notNull(),
+  votesCast: integer('votes_cast').notNull(),
+  asOf: timestamp('as_of', { withTimezone: true }).notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+  channel: text('channel', { enum: ['app', 'sms', 'office'] }).notNull(),
+  flags: text('flags').array().notNull().default([]),
+  meta: jsonb('meta'),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewedBy: uuid('reviewed_by'),
+});
+
+const countCols = {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  kind: text('kind', { enum: ['round', 'station'] }).notNull(),
+  roundNo: integer('round_no'),
+  geoAreaId: uuid('geo_area_id'),
+  candidateId: uuid('candidate_id').notNull(),
+  votes: integer('votes').notNull(),
+};
+
+export const countReports = pgTable('count_reports', {
+  ...countCols,
+  agentId: uuid('agent_id'),
+  clientUuid: uuid('client_uuid').notNull(),
+  channel: text('channel', { enum: ['app', 'sms', 'office'] }).notNull(),
+  asOf: timestamp('as_of', { withTimezone: true }).notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+  flags: text('flags').array().notNull().default([]),
+  meta: jsonb('meta'),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewedBy: uuid('reviewed_by'),
+});
+
+export const officialCounts = pgTable('official_counts', {
+  ...countCols,
+  source: text('source', { enum: ['manual', 'csv'] }).notNull(),
+  sourceNote: text('source_note').notNull(),
+  enteredBy: uuid('entered_by'),
+  enteredAt: timestamp('entered_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const resultsArchives = pgTable('results_archives', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  takenAt: timestamp('taken_at', { withTimezone: true }).notNull().defaultNow(),
+  takenBy: uuid('taken_by'),
+  summary: jsonb('summary').notNull(),
 });
