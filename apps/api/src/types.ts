@@ -9,6 +9,8 @@ export interface Deps {
   now?: () => Date;
   /** Override channels (tests). */
   channels?: import('@cs/channels').ChannelEnv;
+  /** Override login-code delivery (tests). */
+  otpSender?: import('./lib/otp-sender.js').OtpSender;
 }
 
 export type EffectiveRole = Role | 'wes_admin';

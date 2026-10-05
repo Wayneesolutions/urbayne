@@ -5,7 +5,7 @@ const schema = z.object({
   JWT_SECRET: z.string().min(16),
   JWT_REFRESH_SECRET: z.string().min(16),
   DEPLOY_REGION: z.enum(['IN', 'CA']),
-  OTP_PROVIDER: z.enum(['console']).default('console'),
+  OTP_PROVIDER: z.enum(['console', 'twilio', 'dlt']).default('console'),
   PHONE_ENC_KEY: z.string().min(40),
   PHONE_HASH_KEY: z.string().min(40),
   PORT: z.coerce.number().default(4000),
@@ -26,6 +26,10 @@ const schema = z.object({
   DEV_RETURN_OTP: z.enum(['true', 'false']).default('false'),
 }).refine((e) => !(e.NODE_ENV === 'production' && e.DEV_RETURN_OTP === 'true'), {
   message: 'DEV_RETURN_OTP must never be enabled in production',
+}).refine((e) => !(e.NODE_ENV === 'production' && e.OTP_PROVIDER === 'console'), {
+  message: 'OTP_PROVIDER=console is for development only; use twilio (CA) or dlt (IN) in production',
+}).refine((e) => e.OTP_PROVIDER !== 'twilio' || !!(e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && e.TWILIO_MESSAGING_SERVICE_SID), {
+  message: 'OTP_PROVIDER=twilio needs TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_MESSAGING_SERVICE_SID',
 });
 
 export type Env = z.infer<typeof schema>;
