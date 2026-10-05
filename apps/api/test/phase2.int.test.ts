@@ -95,7 +95,7 @@ run('Phase 2 (integration)', () => {
     const other = (await owner.query("SELECT id FROM contacts WHERE name = 'House 2'")).rows[0].id;
     await request(app).post(`/api/t/${tin}/ops/shifts/${shift}/assign`).set(as('owner')).send({ contactIds: [contactA, other] }).expect(200);
     const r = (await request(app).post(`/api/t/${tin}/ops/shifts/${shift}/remind`).set(as('owner')).expect(200)).body;
-    expect(r).toEqual({ sent: 1, skipped: 1, simulated: true });
+    expect(r).toEqual({ sent: 1, skipped: 1, failed: 0, simulated: true });
   });
 
   it('finance: rate-list flag, limits, sign-off lock, export only after sign-off', async () => {
