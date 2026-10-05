@@ -56,7 +56,7 @@ export function reportRoutes(deps: Deps) {
                round(avg(extract(epoch FROM (acknowledged_at - created_at))))::int AS avg_seconds
         FROM tickets WHERE created_at >= ${bounds} AND created_at < ${endBounds}`);
       const trend = await q(sql`
-        SELECT to_char(m, 'YYYY-MM') AS month,
+        SELECT to_char(m AT TIME ZONE ${t.timeZone}, 'YYYY-MM') AS month,
                (SELECT count(*)::int FROM tickets WHERE created_at >= m AND created_at < m + interval '1 month') AS received,
                (SELECT count(*)::int FROM tickets WHERE resolved_at >= m AND resolved_at < m + interval '1 month') AS resolved
         FROM generate_series(((${start}::date - interval '5 months')::timestamp AT TIME ZONE ${t.timeZone}), ${bounds}, interval '1 month') AS m ORDER BY m`);
