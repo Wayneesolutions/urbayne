@@ -10,6 +10,7 @@ import pg from 'pg';
 import { randomBytes } from 'node:crypto';
 import { createApp } from '../src/app.js';
 import type { Env } from '../src/env.js';
+import { testEnv } from './env.js';
 import { IN, CA } from '@cs/regions';
 
 const OWNER_URL = process.env.TEST_DATABASE_URL;
@@ -17,20 +18,9 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
 const run = OWNER_URL && APP_URL ? describe : describe.skip;
 
 const key = () => randomBytes(32).toString('base64');
-const baseEnv = (region: 'IN' | 'CA'): Env => ({
-  APP_DATABASE_URL: APP_URL ?? '',
-  JWT_SECRET: 'test-secret-test-secret',
-  JWT_REFRESH_SECRET: 'test-refresh-test-refresh',
-  DEPLOY_REGION: region,
-  OTP_PROVIDER: 'console',
-  PHONE_ENC_KEY: KEY_ENC,
-  PHONE_HASH_KEY: KEY_HASH,
-  PORT: 0,
-  PUBLIC_BASE_URL: 'http://localhost:4000',
-  ANTHROPIC_MODEL: 'claude-sonnet-5', NODE_ENV: 'test', DEV_RETURN_OTP: 'false', FX_USD_TO_INR: 85, FX_USD_TO_CAD: 1.4,
-});
 const KEY_ENC = key();
 const KEY_HASH = key();
+const baseEnv = (region: 'IN' | 'CA'): Env => testEnv({ DEPLOY_REGION: region, PHONE_ENC_KEY: KEY_ENC, PHONE_HASH_KEY: KEY_HASH, PUBLIC_BASE_URL: 'http://localhost:4000', DEV_RETURN_OTP: 'false' });
 
 run('API (integration)', () => {
   let owner: pg.Pool;

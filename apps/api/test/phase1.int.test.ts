@@ -8,17 +8,14 @@ import pg from 'pg';
 import { randomBytes } from 'node:crypto';
 import { createApp } from '../src/app.js';
 import type { Env } from '../src/env.js';
+import { testEnv } from './env.js';
 import { IN } from '@cs/regions';
 
 const OWNER_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
 const run = OWNER_URL && APP_URL ? describe : describe.skip;
 
-const env: Env = {
-  APP_DATABASE_URL: APP_URL ?? '', JWT_SECRET: 'test-secret-test-secret', JWT_REFRESH_SECRET: 'test-refresh-test-refresh',
-  DEPLOY_REGION: 'IN', OTP_PROVIDER: 'console', PHONE_ENC_KEY: randomBytes(32).toString('base64'),
-  PHONE_HASH_KEY: randomBytes(32).toString('base64'), PORT: 0, PUBLIC_BASE_URL: 'http://test.local', ANTHROPIC_MODEL: 'x', NODE_ENV: 'test', DEV_RETURN_OTP: 'false', FX_USD_TO_INR: 85, FX_USD_TO_CAD: 1.4,
-};
+const env: Env = testEnv({ PUBLIC_BASE_URL: 'http://test.local', DEV_RETURN_OTP: 'false' });
 
 run('Phase 1 (integration)', () => {
   let owner: pg.Pool, pool: pg.Pool, app: ReturnType<typeof createApp>;
@@ -112,6 +109,25 @@ run('Phase 1 (integration)', () => {
     expect(pack.content.text.startsWith(IN.aiDisclosure.spoken.pa!)).toBe(true);
     expect(pack.auditTrail.map((a: { action: string }) => a.action)).toEqual(expect.arrayContaining(['create', 'start_blocked', 'start']));
     expect(pack.campaign.demo).toBe(true);
+  });
+
+  it('exports a sealed PDF evidence pack (Punjabi script included) that anyone can verify', async () => {
+    const res = await request(app).get(`/api/t/${tenant}/calls/runs/${runId}/evidence.pdf`).set(auth()).buffer(true).parse((r, cb) => {
+      const c: Buffer[] = []; r.on('data', (d: Buffer) => c.push(d)); r.on('end', () => cb(null, Buffer.concat(c)));
+    }).expect(200);
+    expect(res.headers['content-type']).toContain('application/pdf');
+    const pdf = res.body as Buffer;
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(pdf.length).toBeGreaterThan(5000);
+    const seal = (await owner.query('SELECT * FROM evidence_seals WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 1', [tenant])).rows[0];
+    expect(seal.run_id).toBe(runId);
+    const check = (await request(app).get(`/api/public/evidence/${seal.id}`).expect(200)).body;
+    expect(check).toMatchObject({ valid: true, sealId: seal.id, sha256: seal.sha256 });
+    // A tampered record no longer verifies.
+    await owner.query("UPDATE evidence_seals SET sha256 = repeat('0', 64) WHERE id = $1", [seal.id]);
+    expect((await request(app).get(`/api/public/evidence/${seal.id}`).expect(200)).body.valid).toBe(false);
+    await request(app).get('/api/public/evidence/00000000-0000-4000-8000-000000000000').expect(404);
+    await request(app).get(`/api/t/${tenant}/calls/runs/${runId}/evidence.pdf`).expect(401);
   });
 
   it('masks phone numbers in the call log', async () => {

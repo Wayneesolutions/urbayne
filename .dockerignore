@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+.git
+.local-pg
+.local-redis
+.env
+.env.*
+!.env.example
+infra
+docs
+**/dist
+.turbo
+coverage

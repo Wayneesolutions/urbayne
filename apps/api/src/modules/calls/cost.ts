@@ -1,8 +1,11 @@
 import { eq, sql } from 'drizzle-orm';
-import { schema, type withTenant } from '@cs/db';
+import { schema, withTenant } from '@cs/db';
+import { VapiVoice } from '@cs/channels';
 import { expenseFlags } from '../finance/rules.js';
 import type { Env } from '../../env.js';
-import type { TenantRow } from '../../types.js';
+import { channelEnv } from '../../lib/util.js';
+import { parseEndOfCall } from './vapi-report.js';
+import type { Deps, TenantRow } from '../../types.js';
 
 type Db = Parameters<Parameters<typeof withTenant>[2]>[0];
 
@@ -56,4 +59,25 @@ export async function syncRunCost(db: Db, tenant: TenantRow, runId: string, env:
   }).returning();
   await db.insert(schema.auditLog).values({ tenantId: tenant.id, action: 'create', entity: 'finance_entry', entityId: row!.id, after: row });
   return row!;
+}
+
+/**
+ * Asks Vapi for a call's final cost (GET /call/{id}) and charges it to the campaign's spending register.
+ * Returns 'no_cost_yet' when Vapi has not finalised billing, so the queue job can try again later.
+ */
+export async function reconcileCallCost(deps: Deps, tenantId: string, interactionId: string): Promise<'updated' | 'no_cost_yet' | 'skipped'> {
+  const cfg = channelEnv(deps).vapi;
+  if (!cfg) return 'skipped';
+  const [i] = await withTenant(deps.pool, tenantId, (db) => db.select().from(schema.interactions).where(eq(schema.interactions.id, interactionId)));
+  if (!i || i.provider !== 'vapi' || !i.providerRef) return 'skipped';
+  const call = await new VapiVoice(cfg).getCall(i.providerRef);
+  if (!call) return 'no_cost_yet';
+  const micros = parseEndOfCall(call).costUsdMicros;
+  if (!micros) return 'no_cost_yet';
+  await withTenant(deps.pool, tenantId, async (db) => {
+    await db.update(schema.interactions).set({ costUsdMicros: micros, updatedAt: new Date() }).where(eq(schema.interactions.id, interactionId));
+    const [tenant] = await db.select().from(schema.tenants).where(eq(schema.tenants.id, tenantId));
+    if (tenant && i.runId) await syncRunCost(db, tenant, i.runId, deps.env);
+  });
+  return 'updated';
 }

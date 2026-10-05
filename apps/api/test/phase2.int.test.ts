@@ -5,14 +5,12 @@ import pg from 'pg';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createApp } from '../src/app.js';
 import type { Env } from '../src/env.js';
+import { testEnv } from './env.js';
 
 const OWNER_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
 const run = OWNER_URL && APP_URL ? describe : describe.skip;
-const env: Env = {
-  APP_DATABASE_URL: APP_URL ?? '', JWT_SECRET: 'test-secret-test-secret', JWT_REFRESH_SECRET: 'test-refresh-test-refresh', DEPLOY_REGION: 'IN', OTP_PROVIDER: 'console',
-  PHONE_ENC_KEY: randomBytes(32).toString('base64'), PHONE_HASH_KEY: randomBytes(32).toString('base64'), PORT: 0, PUBLIC_BASE_URL: 'http://t', ANTHROPIC_MODEL: 'x', NODE_ENV: 'test', DEV_RETURN_OTP: 'true', FX_USD_TO_INR: 85, FX_USD_TO_CAD: 1.4,
-};
+const env: Env = testEnv();
 
 run('Phase 2 (integration)', () => {
   let owner: pg.Pool, pool: pg.Pool, app: ReturnType<typeof createApp>;
@@ -97,7 +95,7 @@ run('Phase 2 (integration)', () => {
     const other = (await owner.query("SELECT id FROM contacts WHERE name = 'House 2'")).rows[0].id;
     await request(app).post(`/api/t/${tin}/ops/shifts/${shift}/assign`).set(as('owner')).send({ contactIds: [contactA, other] }).expect(200);
     const r = (await request(app).post(`/api/t/${tin}/ops/shifts/${shift}/remind`).set(as('owner')).expect(200)).body;
-    expect(r).toEqual({ sent: 1, skipped: 1, simulated: true });
+    expect(r).toEqual({ sent: 1, skipped: 1, failed: 0, simulated: true });
   });
 
   it('finance: rate-list flag, limits, sign-off lock, export only after sign-off', async () => {

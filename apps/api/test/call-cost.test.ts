@@ -4,7 +4,7 @@ import pg from 'pg';
 import { randomBytes } from 'node:crypto';
 import { createApp } from '../src/app.js';
 import { usdMicrosToMinor } from '../src/modules/calls/cost.js';
-import type { Env } from '../src/env.js';
+import { testEnv } from './env.js';
 
 describe('usdMicrosToMinor', () => {
   it('converts provider USD to paise/cents at the configured rate', () => {
@@ -17,15 +17,11 @@ describe('usdMicrosToMinor', () => {
 const OWNER_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
 (OWNER_URL && APP_URL ? describe : describe.skip)('Call cost reaches the finance register (integration)', () => {
-  const env: Env = {
-    APP_DATABASE_URL: APP_URL ?? '', JWT_SECRET: 'test-secret-test-secret', JWT_REFRESH_SECRET: 'test-refresh-test-refresh', DEPLOY_REGION: 'IN', OTP_PROVIDER: 'console',
-    PHONE_ENC_KEY: randomBytes(32).toString('base64'), PHONE_HASH_KEY: randomBytes(32).toString('base64'), PORT: 0, PUBLIC_BASE_URL: 'http://t', ANTHROPIC_MODEL: 'x', NODE_ENV: 'test', DEV_RETURN_OTP: 'true',
-    VAPI_WEBHOOK_SECRET: 'hook-secret', FX_USD_TO_INR: 85, FX_USD_TO_CAD: 1.4,
-  };
+  const env = testEnv({ VAPI_WEBHOOK_SECRET: 'hook-secret-0123456789', FX_USD_TO_INR: '85', FX_USD_TO_CAD: '1.4' });
   let owner: pg.Pool, pool: pg.Pool, app: ReturnType<typeof createApp>, token = '', tenantId = '', runId = '';
   const ids: string[] = [];
   const auth = () => ({ Authorization: `Bearer ${token}` });
-  const report = (interactionId: string, cost: number) => request(app).post('/webhooks/vapi').set('x-vapi-secret', 'hook-secret').send({
+  const report = (interactionId: string, cost: number) => request(app).post('/webhooks/vapi').set('x-vapi-secret', 'hook-secret-0123456789').send({
     message: { type: 'end-of-call-report', cost, durationSeconds: 60, transcript: 'x', endedReason: 'hangup', call: { metadata: { tenantId, interactionId } }, analysis: { structuredData: { answers: {} } } },
   });
   const reopen = (id: string) => owner.query("UPDATE interactions SET status = 'in_progress' WHERE id = $1", [id]);

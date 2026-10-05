@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHmac, randomBytes, randomInt } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 
 /** Normalise to E.164-ish digits with leading +. */
 export function normalisePhone(raw: string): string {
@@ -23,6 +23,12 @@ export function decrypt(token: string, key: string): string {
   const d = createDecipheriv('aes-256-gcm', Buffer.from(key, 'base64'), iv);
   d.setAuthTag(tag);
   return Buffer.concat([d.update(enc), d.final()]).toString('utf8');
+}
+
+/** Constant-time string comparison (for secrets and hashes). */
+export function safeEqual(a: string, b: string): boolean {
+  const x = Buffer.from(a), y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
 }
 
 export const newOtp = () => String(randomInt(0, 1_000_000)).padStart(6, '0');

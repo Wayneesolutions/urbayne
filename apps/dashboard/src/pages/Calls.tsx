@@ -102,6 +102,14 @@ export function RunDetail() {
     a.download = `evidence-${runId}.json`; a.click();
   }
 
+  async function evidencePdf() {
+    const res = await api<Response>(`/t/${t.id}/calls/runs/${runId}/evidence.pdf`, { raw: true });
+    if (!res.ok) { setErr('Could not create the PDF.'); return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await res.blob());
+    a.download = `evidence-${runId}.pdf`; a.click();
+  }
+
   const failed = useMemo(() => new Set((preflight?.reasons ?? run?.gateResult?.reasons ?? []).map((r: any) => r.code)), [preflight, run]);
   if (!run) return <p className="muted">Loading…</p>;
   const done = (stats?.counts.completed ?? 0) + (stats?.counts.no_answer ?? 0) + (stats?.counts.failed ?? 0) + (stats?.counts.blocked ?? 0);
@@ -116,7 +124,8 @@ export function RunDetail() {
           {(run.status === 'draft' || run.status === 'blocked') && <button className="btn primary" onClick={() => act('start')} disabled={preflight ? !preflight.allowed : false}>Start calling</button>}
           {run.status === 'running' && <button className="btn" onClick={() => act('pause')}>Pause</button>}
           {run.status === 'paused' && <button className="btn primary" onClick={() => act('resume')}>Resume</button>}
-          {run.status !== 'draft' && <button className="btn" onClick={evidence}>Download evidence pack</button>}
+          {run.status !== 'draft' && <button className="btn" onClick={evidencePdf}>Evidence pack (PDF)</button>}
+          {run.status !== 'draft' && <button className="btn" onClick={evidence}>Data (JSON)</button>}
         </div>
       </header>
       {err && <p className="err">{err}</p>}

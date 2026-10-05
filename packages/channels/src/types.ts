@@ -6,6 +6,8 @@ export interface CallRequest {
   locale: string;
   script: string;          // approved text; already starts with the disclosure
   survey?: SurveyQuestion[] | null;
+  /** Ask the person for consent on the call (IVR consent). Only set when the approved script really asks the question. */
+  consent?: { textVersion: string; purposes: string[] } | null;
   metadata: { tenantId: string; interactionId: string; runId?: string };
 }
 
@@ -30,8 +32,8 @@ export interface VoiceChannel {
   startCall(req: CallRequest): Promise<CallResult>;
 }
 
-export interface SmsRequest { to: string; body: string; templateId?: string | null; metadata: { tenantId: string; interactionId: string } }
-export interface SmsResult { provider: string; providerRef: string; status: 'queued' | 'sent' | 'failed' }
+export interface SmsRequest { to: string; body: string; templateId?: string | null; /** Registered template text with {#var#} slots (India DLT): the body must match it. */ templateBody?: string | null; metadata: { tenantId: string; interactionId: string } }
+export interface SmsResult { provider: string; providerRef: string; status: 'queued' | 'sent' | 'failed'; /** Why it failed, when known (never contains the message or the number). */ reason?: string }
 
 export interface SmsChannel {
   readonly name: string;

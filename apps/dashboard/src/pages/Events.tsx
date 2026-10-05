@@ -85,7 +85,7 @@ function EventDrawer({ ev, tenant, vols, cur, onClose, onChange }: any) {
             <div className="actions">
               <select multiple value={pick} onChange={(e) => setPick([...e.target.selectedOptions].map((o) => o.value))} className="multi" aria-label="Volunteers">{vols.slice(0, 60).map((v: any) => <option key={v.id} value={v.id}>{v.name ?? '–'}{v.area ? ` · ${v.area}` : ''}</option>)}</select>
               <button className="btn small" onClick={async () => { if (pick.length) { await api(`/t/${tenant.id}/ops/shifts/${s.id}/assign`, { body: { contactIds: pick } }); setPick([]); onChange(); } }}>Add selected</button>
-              <button className="btn small" onClick={async () => { try { const r = await api(`/t/${tenant.id}/ops/shifts/${s.id}/remind`, { method: 'POST' }); setMsg(`${r.sent} reminders sent${r.simulated ? ' (simulated)' : ''}, ${r.skipped} skipped (no consent for texts).`); } catch (x) { setErr(x instanceof ApiError ? x.message : 'Could not send.'); } }}>Send reminders</button>
+              <button className="btn small" onClick={async () => { try { const r = await api(`/t/${tenant.id}/ops/shifts/${s.id}/remind`, { method: 'POST' }); setMsg(r.queued ? 'Reminders are being sent in the background.' : `${r.sent} reminders sent${r.simulated ? ' (simulated)' : ''}, ${r.skipped} skipped (no consent for texts).`); } catch (x) { setErr(x instanceof ApiError ? x.message : 'Could not send.'); } }}>Send reminders</button>
             </div></div>
         ))}
         <div className="two"><label>New shift<input value={shift.title} onChange={(e) => setShift({ ...shift, title: e.target.value })} placeholder="e.g. Setup and chairs" /></label>

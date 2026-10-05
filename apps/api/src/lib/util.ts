@@ -1,6 +1,4 @@
 import { randomBytes } from 'node:crypto';
-import type { RequestHandler } from 'express';
-import { HttpError } from './http.js';
 import type { Deps } from '../types.js';
 import type { ChannelEnv } from '@cs/channels';
 
@@ -16,21 +14,13 @@ export function channelEnv(deps: Deps): ChannelEnv {
   const e = deps.env;
   return {
     vapi: e.VAPI_API_KEY && e.VAPI_PHONE_NUMBER_ID && e.VAPI_ASSISTANT_ID
-      ? { apiKey: e.VAPI_API_KEY, phoneNumberId: e.VAPI_PHONE_NUMBER_ID, assistantId: e.VAPI_ASSISTANT_ID } : null,
+      ? {
+        apiKey: e.VAPI_API_KEY, phoneNumberId: e.VAPI_PHONE_NUMBER_ID, assistantId: e.VAPI_ASSISTANT_ID,
+        // Every call reports back to this deployment, with the shared secret, and is not recorded unless VAPI_RECORDING=true.
+        serverUrl: `${e.PUBLIC_BASE_URL.replace(/\/$/, '')}/webhooks/vapi`, webhookSecret: e.VAPI_WEBHOOK_SECRET, recording: e.VAPI_RECORDING === 'true',
+      } : null,
     twilioSms: e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && e.TWILIO_MESSAGING_SERVICE_SID
       ? { accountSid: e.TWILIO_ACCOUNT_SID, authToken: e.TWILIO_AUTH_TOKEN, messagingServiceSid: e.TWILIO_MESSAGING_SERVICE_SID } : null,
-  };
-}
-
-/** Small in-memory rate limiter for public endpoints (per process; use Redis in production). */
-export function rateLimit(max: number, windowMs: number): RequestHandler {
-  const hits = new Map<string, { n: number; reset: number }>();
-  return (req, _res, next) => {
-    const k = `${req.ip}:${req.baseUrl}${req.path}`;
-    const t = Date.now();
-    const h = hits.get(k);
-    if (!h || h.reset < t) { hits.set(k, { n: 1, reset: t + windowMs }); return next(); }
-    if (++h.n > max) return next(new HttpError(429, 'RATE_LIMITED'));
-    next();
+    dltSms: e.DLT_AUTH_KEY && e.DLT_SENDER_ID ? { authKey: e.DLT_AUTH_KEY, senderId: e.DLT_SENDER_ID, baseUrl: e.DLT_BASE_URL } : null,
   };
 }

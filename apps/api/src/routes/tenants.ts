@@ -47,7 +47,9 @@ export function tenantRoutes(deps: Deps) {
       });
       res.status(201).json(tenant);
     } catch (e: any) {
-      if (e?.code === '23505' && String(e?.constraint ?? e?.message).includes('one_race_one_client')) {
+      // drizzle wraps the database error: the Postgres error (code, constraint) is on .cause
+      const pgErr = e?.cause ?? e;
+      if (pgErr?.code === '23505' && String(pgErr?.constraint ?? pgErr?.message).includes('one_race_one_client')) {
         throw new HttpError(409, 'ONE_RACE_ONE_CLIENT', 'This seat already has an active campaign on the platform.');
       }
       throw e;
@@ -61,6 +63,8 @@ export function tenantRoutes(deps: Deps) {
       pollCloseAt: z.string().datetime({ offset: true }).nullable().optional(),
       enabledModules: z.array(z.enum(MODULES)).optional(),
       spendLimitMinor: z.number().int().positive().nullable().optional(),
+      /** Personal data is deleted this many days after the election (7 to 3650). Confirm the right number with counsel. */
+      retentionDays: z.number().int().min(7).max(3650).nullable().optional(),
       slug: z.string().regex(/^[a-z0-9-]{3,40}$/).optional(),
       candidateName: z.string().max(120).optional(),
       tagline: z.string().max(200).optional(),
@@ -84,6 +88,7 @@ export function tenantRoutes(deps: Deps) {
         ...(b.pollCloseAt !== undefined && { pollCloseAt: b.pollCloseAt ? new Date(b.pollCloseAt) : null }),
         ...(b.enabledModules && { enabledModules: b.enabledModules }),
         ...(b.spendLimitMinor !== undefined && { spendLimitMinor: b.spendLimitMinor }),
+        ...(b.retentionDays !== undefined && { retentionDays: b.retentionDays }),
         ...(b.slug && { slug: b.slug }),
         ...(b.candidateName !== undefined && { candidateName: b.candidateName }),
         ...(b.tagline !== undefined && { tagline: b.tagline }),

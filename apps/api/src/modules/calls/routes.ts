@@ -10,6 +10,9 @@ import { loadTenant, requireRole } from '../../middleware/auth.js';
 import { decrypt } from '../../lib/crypto.js';
 import { maskPhone, now } from '../../lib/util.js';
 import { kickRun, processRun } from './runner.js';
+import { canonicalJson, sha256Hex, signHash } from '../../lib/seal.js';
+import { renderEvidencePdf, type EvidencePack } from '../../lib/evidence-pdf.js';
+import { evidenceKey } from '../../lib/evidence-key.js';
 import type { Deps } from '../../types.js';
 
 export function callRoutes(deps: Deps) {
@@ -87,7 +90,7 @@ export function callRoutes(deps: Deps) {
     });
     if ('blocked' in result && result.blocked) return res.status(422).json({ error: 'RUN_BLOCKED', reasons: result.blocked.reasons });
     if (wait) await processRun(deps, t.id, req.params.runId!);
-    else kickRun(deps, t.id, req.params.runId!);
+    else await kickRun(deps, t.id, req.params.runId!);
     res.json({ status: 'running', ...result });
   }));
 
@@ -101,7 +104,7 @@ export function callRoutes(deps: Deps) {
         return out;
       });
       if (!row) throw new HttpError(409, `CANNOT_${action.toUpperCase()}`);
-      if (to === 'running') kickRun(deps, t.id, row.id);
+      if (to === 'running') await kickRun(deps, t.id, row.id);
       res.json(row);
     }));
   }
@@ -124,27 +127,46 @@ export function callRoutes(deps: Deps) {
     })));
   }));
 
+  const buildPack = (t: import('../../types.js').TenantRow, runId: string) => withTenant(pool, t.id, async (db) => {
+    const [run] = await db.select().from(schema.campaignRuns).where(eq(schema.campaignRuns.id, runId));
+    if (!run) throw new HttpError(404, 'NOT_FOUND');
+    const [item] = await db.select().from(schema.contentItems).where(eq(schema.contentItems.id, run.contentItemId));
+    const stats = await runStats(db, run.id);
+    const log = await db.select({ action: schema.auditLog.action, at: schema.auditLog.at, actor: schema.auditLog.actorId })
+      .from(schema.auditLog).where(eq(schema.auditLog.entityId, run.id)).orderBy(schema.auditLog.at);
+    return {
+      generatedAt: now(deps).toISOString(),
+      campaign: { name: t.campaignName, region: t.region, seat: t.seatCode, electionDate: t.electionDate, demo: t.isDemo },
+      run: { id: run.id, name: run.name, purpose: run.purpose, status: run.status, startedAt: run.startedAt, completedAt: run.completedAt, audienceFilter: run.audience },
+      content: item && { id: item.id, title: item.title, locale: item.locale, text: item.body, survey: item.survey, status: item.status, certificateNo: item.certificateNo, approvedBy: item.approvedBy, approvedAt: item.approvedAt },
+      runGate: run.gateResult,
+      results: stats,
+      auditTrail: log,
+    };
+  });
+
   r.get('/runs/:runId/evidence', requireRole('owner', 'manager', 'finance_agent'), ah(async (req, res) => {
-    const t = req.tenant!;
-    const pack = await withTenant(pool, t.id, async (db) => {
-      const [run] = await db.select().from(schema.campaignRuns).where(eq(schema.campaignRuns.id, req.params.runId!));
-      if (!run) throw new HttpError(404, 'NOT_FOUND');
-      const [item] = await db.select().from(schema.contentItems).where(eq(schema.contentItems.id, run.contentItemId));
-      const stats = await runStats(db, run.id);
-      const log = await db.select({ action: schema.auditLog.action, at: schema.auditLog.at, actor: schema.auditLog.actorId })
-        .from(schema.auditLog).where(eq(schema.auditLog.entityId, run.id)).orderBy(schema.auditLog.at);
-      return {
-        generatedAt: now(deps).toISOString(),
-        campaign: { name: t.campaignName, region: t.region, seat: t.seatCode, electionDate: t.electionDate, demo: t.isDemo },
-        run: { id: run.id, name: run.name, purpose: run.purpose, status: run.status, startedAt: run.startedAt, completedAt: run.completedAt, audienceFilter: run.audience },
-        content: item && { id: item.id, title: item.title, locale: item.locale, text: item.body, survey: item.survey, status: item.status, certificateNo: item.certificateNo, approvedBy: item.approvedBy, approvedAt: item.approvedAt },
-        runGate: run.gateResult,
-        results: stats,
-        auditTrail: log,
-      };
-    });
+    const pack = await buildPack(req.tenant!, req.params.runId!);
     res.setHeader('Content-Disposition', `attachment; filename="evidence-${pack.run.id}.json"`);
     res.json(pack);
+  }));
+
+  /** Readable, sealed evidence pack for returning officers, MCMC and CRTC. Each download records a seal that anyone can verify. */
+  r.get('/runs/:runId/evidence.pdf', requireRole('owner', 'manager', 'finance_agent'), ah(async (req, res) => {
+    const t = req.tenant!;
+    const pack = await buildPack(t, req.params.runId!);
+    const sha256 = sha256Hex(canonicalJson(pack));
+    const signature = signHash(sha256, evidenceKey(deps.env));
+    const seal = await withTenant(pool, t.id, async (db) => {
+      const [row] = await db.insert(schema.evidenceSeals).values({ tenantId: t.id, runId: pack.run.id, sha256, signature, generatedAt: new Date(pack.generatedAt), createdBy: req.user!.id }).returning();
+      await db.insert(schema.auditLog).values({ tenantId: t.id, actorId: req.user!.id, action: 'evidence_pdf', entity: 'campaign_run', entityId: pack.run.id, after: { sealId: row!.id, sha256 }, ip: req.ip });
+      return row!;
+    });
+    const pdf = await renderEvidencePdf(JSON.parse(JSON.stringify(pack)) as EvidencePack, {
+      id: seal.id, sha256, signature, verifyUrl: `${deps.env.PUBLIC_BASE_URL}/api/public/evidence/${seal.id}`,
+    });
+    res.type('application/pdf').setHeader('Content-Disposition', `attachment; filename="evidence-${pack.run.id}.pdf"`);
+    res.send(pdf);
   }));
 
   return r;

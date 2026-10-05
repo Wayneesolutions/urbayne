@@ -97,13 +97,52 @@ Demo flow that sells: open the voter page on a phone, pick an area, press the bi
 
 Note: the Canada demo follows real CRTC hours in Winnipeg time, so outside 9:00 to 21:30 on weekdays (10:00 to 18:00 on weekends) its run is blocked. That is the product working, and worth showing.
 
+
+**Evidence pack (PDF):** `GET /api/t/:tenantId/calls/runs/:runId/evidence.pdf` is a readable, sealed document (campaign, approved script and certificate number, rules check, results, audit trail; Punjabi and Hindi text supported). Every download records a seal (SHA-256 of the data + HMAC with `EVIDENCE_SIGNING_KEY`) that anyone can check at `/api/public/evidence/:sealId`. The seal proves the document came from the system and was not altered; it is not a government certificate or a CA digital signature.
+## Redis, queues and running several servers (P0 items 2 and 3)
+
+With `REDIS_URL` set (required when `NODE_ENV=production`), everything that must be shared between servers is:
+
+- **Rate limits**: per-IP limits on OTP request/verify and the public voter endpoints are counted in Redis (atomic INCR + expiry), so spreading requests over servers does not help an abuser. If Redis is briefly down the limiter lets requests through and logs; per-phone OTP limits stay in the database.
+- **Sessions**: each login creates a session, and a refresh token only works while its session exists. `POST /api/auth/logout` ends one device, `POST /api/auth/logout-all` ends all of them. (The 15-minute access token simply expires.)
+- **Call runs and shift reminders** run as BullMQ jobs (`call-runs`, `reminders`). Starting or resuming a run queues one job per run (a second kick is a no-op). `RUN_WORKERS=true` runs workers inside the API process; in production run dedicated workers with `pnpm worker` and set `RUN_WORKERS=false` on API servers.
+- **Row locking**: workers claim each call with `SELECT ... FOR UPDATE SKIP LOCKED` and mark it `in_progress` before the provider is called, so two workers can never dial the same voter. The provider call happens outside any database transaction. A call claimed by a worker that then died (no provider reference after 10 minutes) is closed as `failed` and never re-dialled. Shift reminders use the same locking.
+
+Without `REDIS_URL` (local dev, tests) everything runs in memory in one process, as before.
+
+Local Redis without Docker (Windows): download `Redis-x64-5.0.14.1.zip` from github.com/tporadowski/redis/releases, unzip it into `.local-redis/`, run `pnpm redis:local` (port 6380), then `TEST_REDIS_URL=redis://localhost:6380/15 pnpm test`. BullMQ recommends Redis 6.2 or newer, so use Redis 7 in production (the Windows build is 5.0 and only prints a warning).
+
+## Observability (P0 item 10)
+
+- **Logs**: one JSON line per request (`reqId`, method, path without query string, status, ms, tenant and user ids). Request bodies, tokens, OTP codes, transcripts and phone numbers are never logged (redaction list in `lib/logger.ts`, phone numbers inside messages are masked). Every response carries `X-Request-Id`; send your own to trace a call end to end. `LOG_LEVEL` sets the level.
+- **Errors**: set `SENTRY_DSN` to send unexpected errors (5xx, failed queue jobs after their last retry) to Sentry, tagged with region, request id and campaign id. Before sending, request bodies, cookies, auth headers, user info and phone numbers are stripped (`scrubEvent`). Expected errors (401, 404, validation) are logged but not reported. Without a DSN nothing is sent.
+- **Readiness**: `GET /ready` returns 200 when the database (and Redis, if configured) answer, 503 otherwise, with no details. Use it for the load balancer; `GET /health` stays a plain liveness check.
+- **Provider cost dashboard**: `GET /api/t/:tenantId/costs?days=30` (owner, manager, finance agent) shows one campaign's AI call spend by day and by run and its share of the spending limit. `GET /api/admin/costs?days=30` (Wayne E Solutions staff only) shows spend per campaign and per region across the platform. Costs come from the provider's end-of-call report (see call cost in the finance register).
+
+## India SMS and DLT (P0 item 4)
+
+India SMS must be sent under a DLT-registered template and sender header, and the text must match the template with only the `{#var#}` slots filled. The platform cannot register templates for you (your operator does, on the DLT portal); it tracks the registration and refuses to send anything that would be blocked.
+
+- **Adapter**: `DltSms` (`packages/channels/src/dlt.ts`) sends through MSG91's send-SMS API v2 (`DLT_AUTH_KEY`, `DLT_SENDER_ID`). It fails closed: no template id, no template text, a message that does not match the template, or a non-Indian number means nothing is sent. **Written from the provider's public docs and tested with a mocked HTTP layer only: confirm with a real account before the first live send.** Another DLT provider needs only a new adapter behind the same `SmsChannel` interface.
+- **Template lifecycle** (India only): create an `sms_template` (text is checked: `{#var#}` only, no two variables side by side, at most 8, at most 1000 characters; warnings for links and a missing opt-out line) -> `GET /api/t/:id/content/:contentId/dlt` shows the text to paste into the DLT portal -> `POST .../dlt {action:"submitted"}` -> when the operator approves, `POST .../dlt {action:"registered", templateId, header}` (template id 10-25 digits, 6-letter header) or `{action:"rejected", reason}`. Editing the text resets the registration, because it covered the old text only. Content still needs the MCMC certificate to be approved.
+- **Shift reminders** in India use the registered, certified template with `templateKey: "shift_reminder"` (suggested text: `{#var#}: reminder, {#var#}, {#var#}. Reply STOP to opt out.` for campaign, shift, day and time). A variable over 30 characters stops the whole send. Failed sends are not marked as reminded, so they can be retried.
+- **Login codes**: `OTP_PROVIDER=dlt` with `DLT_OTP_TEMPLATE_ID` and `DLT_OTP_TEMPLATE_TEXT` (one `{#var#}` for the code); checked at startup.
+
+## Vapi live calls (P0 item 5)
+
+The adapter and the end-of-call handling were checked against Vapi's public docs and rewritten where they were wrong: `endedReason` is mapped properly (busy, voicemail and silence are "not answered"; start errors and unknown reasons are failures, not completed calls), answers are kept only if they match the survey that was asked, each call carries its own structured-data schema, the webhook address and secret are set per call, audio recording is off by default, a cost of 0 in the webhook is looked up again at Vapi and charged to the spending register, and when a campaign's data is deleted the calls are deleted at Vapi too (`DELETE /call/{id}`, retried with `POST /api/t/:tenantId/privacy/provider-data`).
+
+**No real call has been placed from this code.** `pnpm --filter @cs/api vapi:verify --call +<your number>` checks your account and places one real test call; see [docs/vapi-setup.md](docs/vapi-setup.md) for the assistant setup, what is verified and what is not.
+
+## Security (P0 item 11)
+
+See [docs/security.md](docs/security.md): findings and fixes from the review, secret rotation steps, the staff support-access policy, and the brief for an external penetration test (not done yet: it needs an outside tester). Highlights: dependency vulnerabilities fixed (`pnpm audit` is clean and CI fails on high findings), the database app-role password is set at migration time and required in production, tokens are HS256-only with secret rotation (`*_PREVIOUS`), staff access to a campaign needs a stated reason (`X-Support-Reason`), is read-only and is logged, and every response carries security headers with a CSP (nonce on the voter page).
+
 ## Known limits (Phase 1)
 
-- Call runs use an in-process runner; move to Redis + BullMQ before live campaigns.
 - Read-aloud uses the phone's built-in voice in the demo; production should ship pre-recorded Punjabi and Hindi audio.
 - The voter page and dashboard load Google Fonts; self-host them for low-data users.
-- `VapiVoice` request fields and the webhook payload must be checked against current Vapi docs before the first live call.
-- India SMS (DLT provider) adapter is not built yet; India live voice stays blocked until calling hours are confirmed.
+- India live voice stays blocked until calling hours are confirmed.
 
 ## Phase 2: ground game and money (built)
 

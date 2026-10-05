@@ -2,15 +2,38 @@ import type pg from 'pg';
 import type { Env } from './env.js';
 import type { Role, schema } from '@cs/db';
 
-export interface Deps {
+import type { Redis } from 'ioredis';
+import type { RateStore } from './lib/rate-limit.js';
+import type { SessionStore } from './lib/sessions.js';
+import type { Queues } from './lib/queues.js';
+import type { Logger } from 'pino';
+import type { ErrorReporter } from './lib/observability.js';
+
+/** What callers (index.ts, tests) pass in; createApp fills the rest with in-memory defaults. */
+export interface DepsInit {
   env: Env;
   pool: pg.Pool;
+  /** Shared Redis connection (rate limits, sessions, queues). Without it everything runs in memory, one server only. */
+  redis?: Redis;
+  rateStore?: RateStore;
+  sessions?: SessionStore;
+  /** Background job queues (BullMQ). Without them runs and reminders execute inline in this process. */
+  queues?: Queues;
+  log?: Logger;
+  reporter?: ErrorReporter;
   /** Injectable clock (tests and demos). */
   now?: () => Date;
   /** Override channels (tests). */
   channels?: import('@cs/channels').ChannelEnv;
   /** Override login-code delivery (tests). */
   otpSender?: import('./lib/otp-sender.js').OtpSender;
+}
+
+export interface Deps extends DepsInit {
+  rateStore: RateStore;
+  sessions: SessionStore;
+  log: Logger;
+  reporter: ErrorReporter;
 }
 
 export type EffectiveRole = Role | 'wes_admin';
@@ -20,6 +43,8 @@ declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
+      /** Request id (also returned as X-Request-Id and attached to error reports). */
+      id?: string;
       user?: { id: string; wes: boolean };
       tenant?: TenantRow;
       role?: EffectiveRole;

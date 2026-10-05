@@ -26,4 +26,15 @@ for (const f of (await readdir(dir)).filter((f) => f.endsWith('.sql')).sort()) {
     throw e;
   }
 }
+
+// Migration 0001 creates the app role with a throwaway development password. Real deployments set the real one here.
+const appPassword = process.env.APP_ROLE_PASSWORD;
+if (process.env.NODE_ENV === 'production' && (!appPassword || appPassword.length < 24 || appPassword === 'cs_app')) {
+  await client.end();
+  throw new Error('APP_ROLE_PASSWORD (at least 24 characters) is required in production: the cs_app role must not keep its development password');
+}
+if (appPassword) {
+  await client.query(`ALTER ROLE cs_app PASSWORD ${client.escapeLiteral(appPassword)}`);
+  console.log('cs_app password set');
+}
 await client.end();

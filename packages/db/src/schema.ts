@@ -31,6 +31,9 @@ export const tenants = pgTable('tenants', {
   contributionLimitMinor: bigint('contribution_limit_minor', { mode: 'number' }),
   officeLat: doublePrecision('office_lat'),
   officeLng: doublePrecision('office_lng'),
+  /** Personal data is deleted this many days after the election. null = not set, nothing is deleted automatically. */
+  retentionDays: integer('retention_days'),
+  purgedAt: timestamp('purged_at', { withTimezone: true }),
   ...stamps,
 });
 
@@ -103,6 +106,9 @@ export const consents = pgTable('consents', {
   locale: text('locale').notNull(),
   capturedVia: text('captured_via').notNull(),
   capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+  /** Paper: the form / sheet serial number. IVR: the call (interaction) id. */
+  evidenceRef: text('evidence_ref'),
+  capturedBy: uuid('captured_by'),
   withdrawnAt: timestamp('withdrawn_at', { withTimezone: true }),
   ...stamps,
 });
@@ -117,6 +123,13 @@ export const contentItems = pgTable('content_items', {
   status: text('status', { enum: ['draft', 'approved', 'certified'] }).notNull().default('draft'),
   certificateNo: text('certificate_no'),
   dltTemplateId: text('dlt_template_id'),
+  /** India DLT: not_registered -> submitted -> registered | rejected. Only a registered template can be sent. */
+  dltStatus: text('dlt_status', { enum: ['not_registered', 'submitted', 'registered', 'rejected'] }).notNull().default('not_registered'),
+  dltHeader: text('dlt_header'),
+  dltSubmittedAt: timestamp('dlt_submitted_at', { withTimezone: true }),
+  dltRejectionReason: text('dlt_rejection_reason'),
+  /** Which platform message this template is for (reminders need one registered 'shift_reminder' template). */
+  templateKey: text('template_key', { enum: ['shift_reminder'] }),
   approvedBy: uuid('approved_by'),
   approvedAt: timestamp('approved_at', { withTimezone: true }),
   geoAreaId: uuid('geo_area_id'),
@@ -167,6 +180,8 @@ export const interactions = pgTable('interactions', {
   followUp: boolean('follow_up').notNull().default(false),
   /** Provider-reported cost in millionths of a US dollar (null until the provider reports it). */
   costUsdMicros: bigint('cost_usd_micros', { mode: 'number' }),
+  /** Set once the voice provider's copy of this call (transcript, recording) has been deleted. */
+  providerDataDeletedAt: timestamp('provider_data_deleted_at', { withTimezone: true }),
   ...stamps,
 });
 
@@ -332,4 +347,33 @@ export const financeSignoffs = pgTable('finance_signoffs', {
   entries: integer('entries').notNull(),
   signedBy: uuid('signed_by').notNull(),
   signedAt: timestamp('signed_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Keyed phone hashes of people who must never be contacted again. Survives deletion of the contact itself. */
+export const suppressions = pgTable('suppressions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  phoneHash: text('phone_hash').notNull(),
+  reason: text('reason', { enum: ['opted_out', 'erasure_request'] }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** A record of every deletion (counts only, never personal data). */
+export const dataPurges = pgTable('data_purges', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  kind: text('kind', { enum: ['retention', 'owner_request', 'contact_erasure'] }).notNull(),
+  counts: jsonb('counts').$type<Record<string, number>>().notNull(),
+  requestedBy: uuid('requested_by'),
+  ranAt: timestamp('ran_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export const evidenceSeals = pgTable('evidence_seals', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  runId: uuid('run_id').notNull(),
+  sha256: text('sha256').notNull(),
+  signature: text('signature').notNull(),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull(),
+  createdBy: uuid('created_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

@@ -5,28 +5,41 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
+    "worker": "tsx src/worker.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p .",
-    "seed:demo": "tsx src/scripts/seed-demo.ts"
+    "seed:demo": "tsx src/scripts/seed-demo.ts",
+    "purge:due": "tsx src/scripts/purge-due.ts",
+    "vapi:verify": "tsx src/scripts/vapi-verify.ts"
   },
   "dependencies": {
+    "@cs/channels": "workspace:*",
     "@cs/compliance": "workspace:*",
     "@cs/db": "workspace:*",
     "@cs/regions": "workspace:*",
-    "drizzle-orm": "^0.36.0",
+    "@fontsource/noto-sans": "^5.3.0",
+    "@fontsource/noto-sans-devanagari": "^5.3.0",
+    "@fontsource/noto-sans-gurmukhi": "^5.3.0",
+    "@opentelemetry/api": "^1.9.1",
+    "@sentry/node": "^11.4.0",
+    "bullmq": "^6.3.11",
+    "drizzle-orm": "^0.45.3",
     "express": "^4.21.0",
+    "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.2",
+    "pdfkit": "^0.20.2",
     "pg": "^8.13.0",
-    "zod": "^3.23.0",
-    "@cs/channels": "workspace:*",
-    "qrcode": "^1.5.4"
+    "pino": "^10.4.0",
+    "qrcode": "^1.5.4",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.7",
+    "@types/pdfkit": "^0.17.6",
     "@types/pg": "^8.11.0",
+    "@types/qrcode": "^1.5.5",
     "@types/supertest": "^6.0.2",
-    "supertest": "^7.0.0",
-    "@types/qrcode": "^1.5.5"
+    "supertest": "^7.0.0"
   }
 }
