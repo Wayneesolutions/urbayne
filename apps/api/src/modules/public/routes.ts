@@ -7,6 +7,8 @@ import { getRegion } from '@cs/regions';
 import { HttpError, ah } from '../../lib/http.js';
 import { encrypt, hashPhone, normalisePhone } from '../../lib/crypto.js';
 import { rateLimit } from '../../lib/util.js';
+import { verifySignature } from '../../lib/seal.js';
+import { evidenceKey } from '../../lib/evidence-key.js';
 import { answer, assistantText } from '../assistant/answer.js';
 import type { Deps } from '../../types.js';
 
@@ -23,6 +25,18 @@ export function publicRoutes(deps: Deps) {
   const r = Router();
   const { pool, env } = deps;
   r.use(rateLimit(60, 60_000));
+
+  /** Anyone holding an evidence PDF can check its seal here. Declared before /:slug so it is not read as a campaign slug. */
+  r.get('/evidence/:sealId', ah(async (req, res) => {
+    const id = z.string().uuid().parse(req.params.sealId);
+    const { rows } = await pool.query('SELECT * FROM evidence_seal_public($1)', [id]);
+    const s = rows[0];
+    if (!s) throw new HttpError(404, 'SEAL_NOT_FOUND');
+    res.json({
+      valid: verifySignature(s.sha256, s.signature, evidenceKey(env)),
+      sealId: s.id, sha256: s.sha256, generatedAt: s.generated_at, runId: s.run_id, campaign: s.campaign_name, region: s.region,
+    });
+  }));
 
   r.get('/:slug', ah(async (req, res) => {
     const id = await tenantIdBySlug(deps, req.params.slug!);

@@ -84,6 +84,8 @@ Demo flow that sells: open the voter page on a phone, pick an area, press the bi
 
 Note: the Canada demo follows real CRTC hours in Winnipeg time, so outside 9:00 to 21:30 on weekdays (10:00 to 18:00 on weekends) its run is blocked. That is the product working, and worth showing.
 
+**Evidence pack (PDF):** `GET /api/t/:tenantId/calls/runs/:runId/evidence.pdf` is a readable, sealed document (campaign, approved script and certificate number, rules check, results, audit trail; Punjabi and Hindi text supported). Every download records a seal (SHA-256 of the data + HMAC with `EVIDENCE_SIGNING_KEY`) that anyone can check at `/api/public/evidence/:sealId`. The seal proves the document came from the system and was not altered; it is not a government certificate or a CA digital signature.
+
 ## Known limits (Phase 1)
 
 - Call runs use an in-process runner; move to Redis + BullMQ before live campaigns.
