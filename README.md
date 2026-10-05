@@ -12,7 +12,20 @@ One codebase, two editions: India (`IN`) and Canada (`CA`). See the Engineering 
 | `apps/api` | Express API: phone OTP login with JWT, campaign (tenant) creation, content drafting and approval (MCMC certificate in IN, owner approval in CA, disclosure check on scripts, edits reset to draft), contacts with consent capture and data-source guardrails, and a compliance dry-run endpoint. 11 integration tests against real Postgres. |
 | `scripts/guardrails.mjs` | CI check that fails the build if any WhatsApp automation dependency is added. |
 
-## Run locally
+## Run locally without Docker (Windows friendly)
+
+```bash
+pnpm install
+pnpm pg:local      # real Postgres on localhost:5433 (user cs / password cs), keep this terminal open
+# in a second terminal:
+export DATABASE_URL=postgres://cs:cs@localhost:5433/campaign_suite
+export TEST_DATABASE_URL=$DATABASE_URL TEST_APP_DATABASE_URL=postgres://cs_app:cs_app@localhost:5433/campaign_suite
+pnpm db:migrate && pnpm test
+```
+
+Set `APP_DATABASE_URL` in `.env` to the `cs_app` URL on port 5433 as well.
+
+## Run locally (Docker)
 
 ```bash
 pnpm install

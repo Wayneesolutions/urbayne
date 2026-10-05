@@ -6,3 +6,5 @@ coverage
 
 # local verification artifacts
 apps/dashboard/dist
+
+.local-pg

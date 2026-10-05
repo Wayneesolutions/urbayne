@@ -6,6 +6,7 @@ import { encrypt, hashOtp, hashPhone, newOtp, normalisePhone } from '../lib/cryp
 import { signAccess, signRefresh, verifyRefresh } from '../lib/jwt.js';
 import { HttpError, ah } from '../lib/http.js';
 import { requireUser } from '../middleware/auth.js';
+import { otpSenderFor } from '../lib/otp-sender.js';
 import type { Deps } from '../types.js';
 
 const OTP_TTL_MS = 5 * 60_000;
@@ -15,21 +16,28 @@ const MAX_REQUESTS_PER_10_MIN = 3;
 export function authRoutes(deps: Deps) {
   const r = Router();
   const { env, pool } = deps;
+  const otpSender = deps.otpSender ?? otpSenderFor(env, OTP_TTL_MS / 60_000);
 
   r.post('/otp/request', ah(async (req, res) => {
     const phone = normalisePhone(z.object({ phone: z.string() }).parse(req.body).phone);
     const phoneHash = hashPhone(phone, env.PHONE_HASH_KEY);
     const code = newOtp();
+    let otpId = '';
     await withTenant(pool, null, async (db) => {
       const [row] = await db
         .select({ n: sql<number>`count(*)::int` })
         .from(schema.otpCodes)
         .where(and(eq(schema.otpCodes.phoneHash, phoneHash), gt(schema.otpCodes.createdAt, new Date(Date.now() - 10 * 60_000))));
       if ((row?.n ?? 0) >= MAX_REQUESTS_PER_10_MIN) throw new HttpError(429, 'TOO_MANY_OTP_REQUESTS');
-      await db.insert(schema.otpCodes).values({ phoneHash, codeHash: hashOtp(code, env.PHONE_HASH_KEY), expiresAt: new Date(Date.now() + OTP_TTL_MS) });
+      const [ins] = await db.insert(schema.otpCodes).values({ phoneHash, codeHash: hashOtp(code, env.PHONE_HASH_KEY), expiresAt: new Date(Date.now() + OTP_TTL_MS) }).returning({ id: schema.otpCodes.id });
+      otpId = ins!.id;
     });
-    // Phase 0: console delivery only. Phase 1 wires SMS through the channel adapters.
-    if (env.OTP_PROVIDER === 'console') console.log(`[otp] ${phone.slice(0, -4)}**** -> ${code}`);
+    const delivered = await otpSender.send(phone, code);
+    if (!delivered) {
+      // Burn the unsent code so it cannot be guessed, and tell the client plainly.
+      await withTenant(pool, null, (db) => db.update(schema.otpCodes).set({ usedAt: new Date() }).where(eq(schema.otpCodes.id, otpId)));
+      throw new HttpError(502, 'OTP_DELIVERY_FAILED');
+    }
     res.json(env.DEV_RETURN_OTP === 'true' ? { sent: true, devCode: code } : { sent: true });
   }));
 
