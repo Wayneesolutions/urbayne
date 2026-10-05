@@ -21,6 +21,9 @@ const schema = z.object({
   // AI assistant (optional; without it the assistant answers extractively from approved text).
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-5'),
+  // Provider costs are billed in USD; these convert them into the campaign's currency for the spending register. Update to the current rate.
+  FX_USD_TO_INR: z.coerce.number().positive().default(85),
+  FX_USD_TO_CAD: z.coerce.number().positive().default(1.4),
   NODE_ENV: z.string().default('development'),
   // DEV/DEMO ONLY: return the OTP in the API response so a demo can log in without SMS.
   DEV_RETURN_OTP: z.enum(['true', 'false']).default('false'),
