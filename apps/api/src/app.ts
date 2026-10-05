@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import { getRegion } from '@cs/regions';
 import { errorHandlerFor } from './lib/http.js';
 import { createLogger, requestLogger } from './lib/logger.js';
+import { securityHeaders, strictCsp, voterPage } from './lib/security.js';
 import { NoopReporter } from './lib/observability.js';
 import { costRoutes, adminCostRoutes } from './modules/observability/costs.js';
 import { requireUser } from './middleware/auth.js';
@@ -47,6 +48,7 @@ export function createApp(init: DepsInit) {
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
   app.use(requestLogger(deps.log));
+  app.use(securityHeaders({ production: deps.env.NODE_ENV === 'production' }));
   app.use(express.json({ limit: '1mb' }));
 
   app.get('/health', (_req, res) => res.json({ ok: true, region: deps.env.DEPLOY_REGION }));
@@ -67,9 +69,9 @@ export function createApp(init: DepsInit) {
   app.use('/api/public', publicRoutes(deps));
   app.use('/s', shortLinkRedirect(deps));
   app.use('/webhooks', vapiWebhook(deps));
-  app.get('/v/:slug', (_req, res) => res.sendFile(path.join(here, 'public', 'voter.html')));
+  app.get('/v/:slug', voterPage(path.join(here, 'public', 'voter.html')));
   // Booth worker / canvasser app (installable, works offline).
-  app.use('/w', express.static(path.join(here, 'public', 'worker'), { index: 'index.html' }));
+  app.use('/w', strictCsp, express.static(path.join(here, 'public', 'worker'), { index: 'index.html' }));
 
   // Signed-in
   app.use('/api/auth', authRoutes(deps));
@@ -93,8 +95,8 @@ export function createApp(init: DepsInit) {
   // Built dashboard (apps/dashboard/dist), if present.
   const dash = path.resolve(here, '../../dashboard/dist');
   if (existsSync(dash)) {
-    app.use('/admin', express.static(dash));
-    app.get('/admin/*', (_req, res) => res.sendFile(path.join(dash, 'index.html')));
+    app.use('/admin', strictCsp, express.static(dash));
+    app.get('/admin/*', strictCsp, (_req, res) => res.sendFile(path.join(dash, 'index.html')));
   }
 
   app.use(errorHandlerFor(deps.log, deps.reporter));

@@ -9,7 +9,7 @@ export const requireUser = (deps: Deps): RequestHandler => (req, _res, next) => 
   const h = req.headers.authorization;
   if (!h?.startsWith('Bearer ')) return next(new HttpError(401, 'UNAUTHENTICATED'));
   try {
-    const c = verifyAccess(h.slice(7), deps.env.JWT_SECRET);
+    const c = verifyAccess(h.slice(7), [deps.env.JWT_SECRET, deps.env.JWT_SECRET_PREVIOUS ?? '']);
     req.user = { id: c.sub, wes: Boolean(c.wes) };
     next();
   } catch {
@@ -31,8 +31,14 @@ export const loadTenant = (deps: Deps): RequestHandler =>
         .from(schema.memberships)
         .where(and(eq(schema.memberships.tenantId, tenantId), eq(schema.memberships.userId, user.id)));
       if (!m && user.wes) {
-        // Support access is allowed but always logged.
-        await db.insert(schema.auditLog).values({ tenantId, actorId: user.id, action: 'support_access', entity: 'tenant', entityId: tenantId, ip: req.ip });
+        // Support access to a campaign you are not a member of: read-only, needs a stated reason, and every request is logged with it.
+        const reason = String(req.headers['x-support-reason'] ?? '').trim();
+        if (reason.length < 10) throw new HttpError(403, 'SUPPORT_REASON_REQUIRED', 'Support access needs an X-Support-Reason header (at least 10 characters: ticket number and why).');
+        if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(403, 'SUPPORT_READ_ONLY', 'Support access is read-only. Changes are made by the campaign owner.');
+        await db.insert(schema.auditLog).values({
+          tenantId, actorId: user.id, action: 'support_access', entity: 'tenant', entityId: tenantId, ip: req.ip,
+          after: { reason: reason.slice(0, 300), method: req.method, path: req.originalUrl.split('?')[0] },
+        });
       }
       return { tenant, role: (m?.role ?? (user.wes ? 'wes_admin' : null)) as EffectiveRole | null };
     });

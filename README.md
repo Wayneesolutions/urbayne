@@ -134,6 +134,10 @@ The adapter and the end-of-call handling were checked against Vapi's public docs
 
 **No real call has been placed from this code.** `pnpm --filter @cs/api vapi:verify --call +<your number>` checks your account and places one real test call; see [docs/vapi-setup.md](docs/vapi-setup.md) for the assistant setup, what is verified and what is not.
 
+## Security (P0 item 11)
+
+See [docs/security.md](docs/security.md): findings and fixes from the review, secret rotation steps, the staff support-access policy, and the brief for an external penetration test (not done yet: it needs an outside tester). Highlights: dependency vulnerabilities fixed (`pnpm audit` is clean and CI fails on high findings), the database app-role password is set at migration time and required in production, tokens are HS256-only with secret rotation (`*_PREVIOUS`), staff access to a campaign needs a stated reason (`X-Support-Reason`), is read-only and is logged, and every response carries security headers with a CSP (nonce on the voter page).
+
 ## Known limits (Phase 1)
 
 - Read-aloud uses the phone's built-in voice in the demo; production should ship pre-recorded Punjabi and Hindi audio.

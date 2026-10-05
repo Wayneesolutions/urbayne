@@ -5,6 +5,10 @@ const schema = z.object({
   APP_DATABASE_URL: z.string().url(),
   JWT_SECRET: z.string().min(16),
   JWT_REFRESH_SECRET: z.string().min(16),
+  // Secret rotation: put the old value here while tokens signed with it are still valid, then remove it.
+  JWT_SECRET_PREVIOUS: z.string().min(16).optional(),
+  JWT_REFRESH_SECRET_PREVIOUS: z.string().min(16).optional(),
+  EVIDENCE_SIGNING_KEY_PREVIOUS: z.string().min(32).optional(),
   DEPLOY_REGION: z.enum(['IN', 'CA']),
   OTP_PROVIDER: z.enum(['console', 'twilio', 'dlt']).default('console'),
   PHONE_ENC_KEY: z.string().min(40),

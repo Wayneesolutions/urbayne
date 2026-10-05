@@ -25,6 +25,9 @@ export function errorHandlerFor(log: Logger, reporter: ErrorReporter) {
       return res.status(err.status).json({ error: err.code, message: err.message });
     }
     if (err instanceof ZodError) return res.status(400).json({ error: 'VALIDATION', issues: err.issues });
+    const kind = (err as { type?: string } | null)?.type;
+    if (kind === 'entity.parse.failed') return res.status(400).json({ error: 'BAD_JSON' });
+    if (kind === 'entity.too.large') return res.status(413).json({ error: 'PAYLOAD_TOO_LARGE' });
     log.error({ reqId: req.id, err }, 'unhandled error');
     reporter.capture(err, { reqId: req.id, tenantId: req.params?.tenantId, userId: req.user?.id, route: `${req.method} ${req.baseUrl}${req.route?.path ?? ''}` });
     return res.status(500).json({ error: 'INTERNAL', requestId: req.id });

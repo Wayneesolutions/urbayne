@@ -27,6 +27,7 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm guardrails
+      - run: pnpm audit --audit-level=high
       - run: pnpm typecheck
       - run: pnpm db:migrate
       - run: pnpm test

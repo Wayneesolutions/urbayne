@@ -8,7 +8,7 @@ import { HttpError, ah } from '../../lib/http.js';
 import { encrypt, hashPhone, normalisePhone } from '../../lib/crypto.js';
 import { rateLimit } from '../../lib/rate-limit.js';
 import { verifySignature } from '../../lib/seal.js';
-import { evidenceKey } from '../../lib/evidence-key.js';
+import { evidenceKeys } from '../../lib/evidence-key.js';
 import { answer, assistantText } from '../assistant/answer.js';
 import type { Deps } from '../../types.js';
 
@@ -33,7 +33,7 @@ export function publicRoutes(deps: Deps) {
     const s = rows[0];
     if (!s) throw new HttpError(404, 'SEAL_NOT_FOUND');
     res.json({
-      valid: verifySignature(s.sha256, s.signature, evidenceKey(env)),
+      valid: evidenceKeys(env).some((k) => verifySignature(s.sha256, s.signature, k)),
       sealId: s.id, sha256: s.sha256, generatedAt: s.generated_at, runId: s.run_id, campaign: s.campaign_name, region: s.region,
     });
   }));

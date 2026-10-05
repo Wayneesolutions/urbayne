@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
 import { schema, withTenant } from '@cs/db';
-import { encrypt, hashOtp, hashPhone, newOtp, normalisePhone } from '../lib/crypto.js';
+import { encrypt, hashOtp, hashPhone, newOtp, normalisePhone, safeEqual } from '../lib/crypto.js';
 import { signAccess, signRefresh, verifyRefresh } from '../lib/jwt.js';
 import { HttpError, ah } from '../lib/http.js';
 import { requireUser } from '../middleware/auth.js';
@@ -55,7 +55,7 @@ export function authRoutes(deps: Deps) {
         .orderBy(desc(schema.otpCodes.createdAt))
         .limit(1);
       if (!otp || otp.attempts >= MAX_ATTEMPTS) throw new HttpError(401, 'OTP_INVALID');
-      if (otp.codeHash !== hashOtp(body.code, env.PHONE_HASH_KEY)) {
+      if (!safeEqual(otp.codeHash, hashOtp(body.code, env.PHONE_HASH_KEY))) {
         await db.update(schema.otpCodes).set({ attempts: otp.attempts + 1 }).where(eq(schema.otpCodes.id, otp.id));
         return null;
       }
@@ -77,7 +77,7 @@ export function authRoutes(deps: Deps) {
   r.post('/refresh', ah(async (req, res) => {
     const { refreshToken } = z.object({ refreshToken: z.string() }).parse(req.body);
     let sub: string, sid: string;
-    try { ({ sub, sid } = verifyRefresh(refreshToken, env.JWT_REFRESH_SECRET)); } catch { throw new HttpError(401, 'UNAUTHENTICATED'); }
+    try { ({ sub, sid } = verifyRefresh(refreshToken, [env.JWT_REFRESH_SECRET, env.JWT_REFRESH_SECRET_PREVIOUS ?? ''])); } catch { throw new HttpError(401, 'UNAUTHENTICATED'); }
     if (!(await deps.sessions.isValid(sid, sub))) throw new HttpError(401, 'SESSION_ENDED');
     const [user] = await withTenant(pool, null, (db) => db.select().from(schema.users).where(eq(schema.users.id, sub)));
     if (!user) throw new HttpError(401, 'UNAUTHENTICATED');
@@ -87,7 +87,7 @@ export function authRoutes(deps: Deps) {
   /** Ends this device's session: its refresh token stops working at once (the 15-minute access token simply expires). */
   r.post('/logout', ah(async (req, res) => {
     const { refreshToken } = z.object({ refreshToken: z.string() }).parse(req.body);
-    try { await deps.sessions.revoke(verifyRefresh(refreshToken, env.JWT_REFRESH_SECRET).sid); } catch { /* already invalid: nothing to end */ }
+    try { await deps.sessions.revoke(verifyRefresh(refreshToken, [env.JWT_REFRESH_SECRET, env.JWT_REFRESH_SECRET_PREVIOUS ?? '']).sid); } catch { /* already invalid: nothing to end */ }
     res.json({ ok: true });
   }));
 
