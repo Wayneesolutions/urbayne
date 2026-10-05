@@ -152,6 +152,10 @@ run('Redis: rate limits, sessions, queues, row locking (integration)', () => {
 
     const status = async () => (await owner.query('SELECT status FROM campaign_runs WHERE id = $1', [runId])).rows[0].status as string;
     const resetRun = async () => {
+      // The simulated first pass can make a contact say "stop" (random), which is correct but would block that person here.
+      await owner.query('UPDATE contacts SET opted_out = false WHERE tenant_id = $1', [tenantId]);
+      await owner.query('DELETE FROM suppressions WHERE tenant_id = $1', [tenantId]);
+      await owner.query('UPDATE consents SET withdrawn_at = NULL WHERE tenant_id = $1', [tenantId]);
       await owner.query("UPDATE interactions SET status = 'queued', provider_ref = NULL, started_at = NULL, ended_at = NULL WHERE run_id = $1", [runId]);
       await owner.query("UPDATE campaign_runs SET status = 'running' WHERE id = $1", [runId]);
     };
