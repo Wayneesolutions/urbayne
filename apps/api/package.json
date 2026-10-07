@@ -33,6 +33,7 @@
     "pino": "^10.4.0",
     "qrcode": "^1.5.4",
     "read-excel-file": "^9.3.10",
+    "write-excel-file": "^4.1.1",
     "zod": "^3.23.0"
   },
   "devDependencies": {
@@ -42,7 +43,6 @@
     "@types/pg": "^8.11.0",
     "@types/qrcode": "^1.5.5",
     "@types/supertest": "^6.0.2",
-    "supertest": "^7.0.0",
-    "write-excel-file": "^4.1.1"
+    "supertest": "^7.0.0"
   }
 }

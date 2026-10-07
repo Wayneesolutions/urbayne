@@ -42,6 +42,12 @@ export const tenants = pgTable('tenants', {
   purgedAt: timestamp('purged_at', { withTimezone: true }),
   /** Set when the results were frozen into the archive after the election: no more reports are accepted. */
   resultsArchivedAt: timestamp('results_archived_at', { withTimezone: true }),
+  /** Canadian province whose rules apply (for example MB). */
+  province: text('province'),
+  /** The election package applied to this campaign, and the onboarding checklist items ticked by hand. */
+  packId: text('pack_id'),
+  packAppliedAt: timestamp('pack_applied_at', { withTimezone: true }),
+  packChecks: jsonb('pack_checks').$type<Record<string, { by: string; at: string }>>().notNull().default({}),
   ...stamps,
 });
 

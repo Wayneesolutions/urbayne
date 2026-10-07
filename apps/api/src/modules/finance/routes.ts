@@ -6,7 +6,10 @@ import { schema, withTenant } from '@cs/db';
 import { HttpError, ah } from '../../lib/http.js';
 import { loadTenant, requireRole } from '../../middleware/auth.js';
 import { contributionFlags, csvCell, expenseFlags, normaliseParty } from './rules.js';
+import { filingFormat, filingFormatsFor, getProvince } from '@cs/regions';
+import writeExcelFile from 'write-excel-file/node';
 import { BANK_MODES, matchLines, parseBankCsv, type EntryLite } from './reconcile.js';
+import { renderFiling } from './filing.js';
 import { deleteFiles, loadFile, saveFile } from '../files/files.js';
 import { rawUpload, sendBlob, uploadName } from '../files/routes.js';
 import type { Deps, TenantRow } from '../../types.js';
@@ -45,7 +48,7 @@ export function financeRoutes(deps: Deps) {
         currency: t.region === 'IN' ? 'INR' : 'CAD', limitMinor: t.spendLimitMinor, contributionLimitMinor: t.contributionLimitMinor,
         ...tot, share: t.spendLimitMinor ? tot.expense / t.spendLimitMinor : null,
         byCategory: byCat.map((c) => ({ ...c, minor: Number(c.minor) })), lockedUntil: t.financeLockedUntil, lastSignoff: signoff ?? null,
-        categories: t.region === 'IN' ? IN_CATEGORIES : CA_CATEGORIES,
+        categories: getProvince(t.region, t.province)?.expenseCategories ?? (t.region === 'IN' ? IN_CATEGORIES : CA_CATEGORIES),
       };
     });
     res.json(out);
@@ -123,17 +126,29 @@ export function financeRoutes(deps: Deps) {
         .where(and(eq(schema.financeEntries.kind, kind), lte(schema.financeEntries.entryDate, s.periodTo))).orderBy(asc(schema.financeEntries.entryDate));
       return { s, list };
     });
-    const money = (m: number | null) => (m == null ? '' : (m / 100).toFixed(2));
-    const head = kind === 'expense'
-      ? ['Date', 'Category', 'Description', 'Paid to', 'Address', 'Bill / invoice no.', 'Quantity', 'Rate', 'Amount', 'Mode', 'Source', 'Flags']
-      : ['Date', 'Receipt no.', 'Received from', 'Address', 'Description', 'Amount', 'Mode', 'Eligibility confirmed', 'Flags'];
-    const lines = rows.list.map((e) => (kind === 'expense'
-      ? [e.entryDate, e.category, e.description, e.partyName, e.partyAddress, e.billNo, e.quantity, money(e.unitRateMinor), money(e.amountMinor), e.paymentMode, e.source, e.flags.map((f) => f.code).join(' ')]
-      : [e.entryDate, e.receiptNo, e.partyName, e.partyAddress, e.description, money(e.amountMinor), e.paymentMode, e.eligibleAttested ? 'yes' : 'no', e.flags.map((f) => f.code).join(' ')]).map(csvCell).join(','));
-    const note = `# ${t.campaignName} â€” ${kind} register up to ${rows.s.periodTo}, signed off ${rows.s.signedAt.toISOString()}. Check the column layout against the format your election authority requires.`;
-    res.type('text/csv').setHeader('Content-Disposition', `attachment; filename="${kind}-register-${rows.s.periodTo}.csv"`);
-    res.send([note, head.map(csvCell).join(','), ...lines].join('\n'));
+    const fmt = filingFormat(String(req.query.format ?? (kind === 'expense' ? 'register-expense' : 'register-contribution')), t.region, kind, t.province);
+    if (!fmt) throw new HttpError(422, 'FORMAT_NOT_AVAILABLE', 'That layout is not available for this campaign. See /finance/formats.');
+    const table = renderFiling(fmt, rows.list);
+    const note = `# ${t.campaignName} — ${fmt.title}, ${kind} entries up to ${rows.s.periodTo}, signed off ${rows.s.signedAt.toISOString()}. Check the column layout against the form your election authority requires.`;
+    const draft = fmt.confirmed ? null : `# DRAFT LAYOUT: not yet checked against the official form of ${fmt.authority}. Compare it with their form before filing.`;
+    const base = `${kind}-${fmt.id}-${rows.s.periodTo}`;
+    if (req.query.as === 'xlsx') {
+      const cells = (v: string | number | null) => ({ value: v == null ? '' : v });
+      const sheet = [[cells(note)], ...(draft ? [[cells(draft)]] : []), table.head.map((h) => ({ value: h, fontWeight: 'bold' as const })), ...table.rows.map((r) => r.map(cells))];
+      const buf = await writeExcelFile(sheet as never).toBuffer();
+      res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').setHeader('Content-Disposition', `attachment; filename="${base}.xlsx"`);
+      return res.send(buf);
+    }
+    res.type('text/csv').setHeader('Content-Disposition', `attachment; filename="${base}.csv"`);
+    res.send([note, ...(draft ? [draft] : []), table.head.map(csvCell).join(','), ...table.rows.map((r) => r.map(csvCell).join(','))].join('\n'));
   }));
+
+  /** The layouts this campaign can export its registers in, and whether each has been checked against the official form. */
+  r.get('/formats', requireRole(...SIGNERS), (req, res) => {
+    const t = req.tenant!;
+    const pick = (kind: 'expense' | 'contribution') => filingFormatsFor(t.region, kind, t.province).map((f) => ({ id: f.id, title: f.title, authority: f.authority, confirmed: f.confirmed, default: f.id.startsWith('register-') }));
+    res.json({ expense: pick('expense'), contribution: pick('contribution') });
+  });
 
   // ----- receipt photos -----
   /** Attaches a receipt (photo or PDF) to an entry. The request body is the file itself. Replaces an earlier one. */

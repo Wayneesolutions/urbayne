@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { and, desc, eq } from 'drizzle-orm';
 import { schema, withTenant } from '@cs/db';
-import { getRegion, type Locale } from '@cs/regions';
+import { BLANK_OPEN, getRegion, type Locale } from '@cs/regions';
 import { renderDisclosure } from '@cs/compliance';
 import { HttpError, ah } from '../lib/http.js';
 import { loadTenant, requireRole } from '../middleware/auth.js';
@@ -192,6 +192,8 @@ export function contentRoutes(deps: Deps) {
     const row = await withTenant(pool, t.id, async (db) => {
       const [item] = await db.select().from(schema.contentItems).where(and(eq(schema.contentItems.id, req.params.id!)));
       if (!item) throw new HttpError(404, 'NOT_FOUND');
+      // Text from an election package still has blanks to fill in (marked with ⟦ ⟧): it cannot be approved like that.
+      if (item.body.includes(BLANK_OPEN) || item.title.includes(BLANK_OPEN)) throw new HttpError(422, 'TEMPLATE_NOT_FILLED', 'This text still has blanks marked ⟦ ⟧. Fill them in, then approve.');
 
       // Voice scripts must open with the disclosure before anyone can approve them.
       if (item.kind === 'script') {

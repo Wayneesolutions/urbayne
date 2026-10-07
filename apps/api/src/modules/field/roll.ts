@@ -8,8 +8,8 @@ type Db = Parameters<Parameters<typeof withTenant>[2]>[0];
 
 /** Columns that must never be in a list we hold. A file with one of these is refused, not trimmed. */
 const FORBIDDEN = /caste|jati|jaati|religion|dharm|community|creed|\bsc\s*\/?\s*st\b|\bobc\b/i;
-const HOUSE = /house|h\.?\s?no|door|ghar|makan|building|flat|à¨®à¨•à¨¾à¨¨|à¨˜à¨°|à¤®à¤•à¤¾à¤¨|à¤˜à¤°/i;
-const ADDRESS = /address|street|locality|village|ward|colony|mohalla|gali|pata|à¨ªà¨¤à¨¾|à¤ªà¤¤à¤¾/i;
+const HOUSE = /house|h\.?\s?no|door|ghar|makan|building|flat|ਮਕਾਨ|ਘਰ|मकान|घर/i;
+const ADDRESS = /address|street|locality|village|ward|colony|mohalla|gali|pata|ਪਤਾ|पता/i;
 const ELECTORS = /^(no\.?\s*of\s*)?(electors|voters|members|persons|inmates|count|total)$/i;
 
 export interface RollHousehold { houseNo: string; address: string | null; electors: number | null }
