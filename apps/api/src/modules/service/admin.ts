@@ -6,12 +6,17 @@ import { schema, withTenant } from '@cs/db';
 import { HttpError, ah } from '../../lib/http.js';
 import { requireUser } from '../../middleware/auth.js';
 import { now } from '../../lib/util.js';
+import { meterUsage } from '../billing/metering.js';
+import { billedUnits, buildPlanInvoice } from '../billing/invoice.js';
 import type { Deps } from '../../types.js';
 
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const uuid = z.string().uuid();
 
-export interface BillingRow { tenant_id: string; campaign_name: string; region: 'IN' | 'CA'; kind: string; plan: string; price_minor: string; sms_rate_minor: string; sms_included: number; tax_percent: string | null; status: string; started_on: string }
+export interface BillingRow {
+  tenant_id: string; campaign_name: string; region: 'IN' | 'CA'; kind: string; plan: string; price_minor: string; sms_rate_minor: string; sms_included: number; tax_percent: string | null; status: string; started_on: string;
+  plan_code: string | null; billing: 'per_campaign' | 'monthly'; terms: schema.PlanTerms | null; discount_percent: string | null;
+}
 
 /** A date column as YYYY-MM-DD (node-postgres hands raw queries a Date at local midnight). */
 const ymd = (v: unknown) => (v instanceof Date ? `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}` : String(v).slice(0, 10));
@@ -96,6 +101,58 @@ export function serviceAdminRoutes(deps: Deps) {
     res.json(row);
   }));
 
+  // ----- packages (plans) -----
+  const units = z.record(z.enum(schema.METRICS), z.number().int().min(0).max(100_000_000)).default({});
+  const planBody = z.object({
+    name: z.string().min(2).max(80), region: z.enum(['IN', 'CA']), billing: z.enum(['per_campaign', 'monthly']), priceMinor: z.number().int().min(0),
+    included: units, overageMinor: units, hardLimits: units, active: z.boolean().default(true),
+  }).strict().superRefine((p, ctx) => {
+    for (const k of ['contacts', 'teamMembers'] as const) if (p.overageMinor[k]) ctx.addIssue({ code: 'custom', message: `${k} is only capped, not charged per unit`, path: ['overageMinor', k] });
+    for (const k of schema.METRICS) { const inc = p.included[k], cap = p.hardLimits[k]; if (inc != null && cap != null && cap < inc) ctx.addIssue({ code: 'custom', message: `the cap on ${k} is below what is included`, path: ['hardLimits', k] }); }
+  });
+
+  r.get('/plans', ah(async (_req, res) => {
+    res.json(await withTenant(pool, null, (db) => db.select().from(schema.plans).orderBy(schema.plans.region, schema.plans.name)));
+  }));
+
+  /** Create or change a package. Campaigns already on it keep the terms they were given. */
+  r.put('/plans/:code', ah(async (req, res) => {
+    const code = z.string().regex(/^[a-z0-9_-]{2,40}$/).parse(req.params.code);
+    const b = planBody.parse(req.body);
+    const v = { name: b.name, region: b.region, currency: b.region === 'IN' ? 'INR' as const : 'CAD' as const, billing: b.billing, priceMinor: b.priceMinor, included: b.included, overageMinor: b.overageMinor, hardLimits: b.hardLimits, active: b.active, updatedAt: now(deps) };
+    const row = await withTenant(pool, null, async (db) => {
+      const [p] = await db.insert(schema.plans).values({ code, ...v }).onConflictDoUpdate({ target: schema.plans.code, set: v }).returning();
+      await db.insert(schema.auditLog).values({ actorId: req.user!.id, action: 'set_plan', entity: 'plan', entityId: code, after: v, ip: req.ip });
+      return p!;
+    });
+    res.json(row);
+  }));
+
+  /** Puts a campaign on a package. The package's terms are copied onto the campaign's subscription. */
+  r.put('/tenants/:tenantId/plan', ah(async (req, res) => {
+    const tenantId = uuid.parse(req.params.tenantId);
+    const b = z.object({
+      planCode: z.string(), startedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), taxPercent: z.number().min(0).max(100).nullable().default(null),
+      discountPercent: z.number().min(0).max(100).nullable().default(null), status: z.enum(['trial', 'active', 'past_due', 'cancelled']).default('active'),
+    }).strict().parse(req.body);
+    const row = await withTenant(pool, tenantId, async (db) => {
+      const [t] = await db.select().from(schema.tenants).where(eq(schema.tenants.id, tenantId));
+      if (!t) throw new HttpError(404, 'TENANT_NOT_FOUND');
+      const [p] = await db.select().from(schema.plans).where(eq(schema.plans.code, b.planCode));
+      if (!p || !p.active) throw new HttpError(404, 'PLAN_NOT_FOUND');
+      if (p.region !== t.region) throw new HttpError(422, 'PLAN_REGION_MISMATCH', `This package is for ${p.region} campaigns.`);
+      const v = {
+        plan: p.name, priceMinor: p.priceMinor, smsRateMinor: p.overageMinor.smsSent ?? 0, smsIncluded: p.included.smsSent ?? 0, taxPercent: b.taxPercent == null ? null : String(b.taxPercent),
+        status: b.status, startedOn: b.startedOn, planCode: p.code, billing: p.billing, terms: { included: p.included, overageMinor: p.overageMinor, hardLimits: p.hardLimits },
+        discountPercent: b.discountPercent == null ? null : String(b.discountPercent), updatedAt: now(deps),
+      };
+      const [s] = await db.insert(schema.subscriptions).values({ tenantId, ...v }).onConflictDoUpdate({ target: schema.subscriptions.tenantId, set: v }).returning();
+      await db.insert(schema.auditLog).values({ tenantId, actorId: req.user!.id, action: 'assign_plan', entity: 'subscription', entityId: tenantId, after: { planCode: p.code, startedOn: b.startedOn, discountPercent: b.discountPercent }, ip: req.ip });
+      return s!;
+    });
+    res.json(row);
+  }));
+
   /** Issues the invoice for a month for every active subscription. Safe to run twice: a month already invoiced is skipped. */
   r.post('/invoices/generate', ah(async (req, res) => {
     const m = month.parse(req.body?.month);
@@ -112,9 +169,19 @@ export function serviceAdminRoutes(deps: Deps) {
         const [t] = await db.select().from(schema.tenants).where(eq(schema.tenants.id, sub.tenant_id));
         const from = sql`(${monthStart}::date)::timestamp AT TIME ZONE ${t!.timeZone}`;
         const to = sql`((${monthStart}::date + interval '1 month')::timestamp AT TIME ZONE ${t!.timeZone})`;
-        const [c] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.interactions)
-          .where(and(eq(schema.interactions.channel, 'sms'), eq(schema.interactions.direction, 'outbound'), eq(schema.interactions.status, 'completed'), gte(schema.interactions.startedAt, sql`${from}`), lt(schema.interactions.startedAt, sql`${to}`)));
-        const inv = buildInvoice(sub, m, c?.n ?? 0);
+        let inv: ReturnType<typeof buildInvoice>;
+        if (sub.terms) {
+          // A package: meter what was used (this month, or the whole campaign so far) and bill what is beyond the package.
+          const nextMonth = new Date(Date.UTC(+m.slice(0, 4), +m.slice(5, 7), 1)).toISOString().slice(0, 10);
+          const started = ymd(sub.started_on);
+          const used = await meterUsage(db, t!.timeZone, sub.billing === 'per_campaign' ? started : monthStart, nextMonth);
+          const earlier = await db.select().from(schema.invoices).where(and(eq(schema.invoices.tenantId, sub.tenant_id), lt(schema.invoices.periodStart, monthStart)));
+          inv = buildPlanInvoice({ plan: sub.plan, billing: sub.billing, priceMinor: Number(sub.price_minor), taxPercent: sub.tax_percent, discountPercent: sub.discount_percent, startedOn: started, terms: sub.terms }, m, used, billedUnits(earlier));
+        } else {
+          const [c] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.interactions)
+            .where(and(eq(schema.interactions.channel, 'sms'), eq(schema.interactions.direction, 'outbound'), eq(schema.interactions.status, 'completed'), gte(schema.interactions.startedAt, sql`${from}`), lt(schema.interactions.startedAt, sql`${to}`)));
+          inv = buildInvoice(sub, m, c?.n ?? 0);
+        }
         if (!inv.lines.length) return 'empty' as const;
         const [row] = await db.insert(schema.invoices).values({
           tenantId: sub.tenant_id, number: `INV-${m}-${sub.tenant_id.slice(0, 8).toUpperCase()}`, periodStart: monthStart, periodEnd: `${m}-${String(daysInMonth(m)).padStart(2, '0')}`,

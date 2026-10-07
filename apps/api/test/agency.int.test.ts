@@ -26,7 +26,7 @@ run('Agency view (integration)', () => {
     T[seat] = id;
     return id;
   }
-  const invite = async (who: string, tenant: string, whiteLabel = false) => (await request(app).post(`/api/t/${tenant}/agency/invite`).set(as(who)).send({ whiteLabel }).expect(201)).body.code as string;
+  const invite = async (who: string, tenant: string | undefined, whiteLabel = false) => (await request(app).post(`/api/t/${tenant}/agency/invite`).set(as(who)).send({ whiteLabel }).expect(201)).body.code as string;
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });

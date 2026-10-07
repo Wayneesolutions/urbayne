@@ -10,6 +10,7 @@ import { channelEnv, now } from '../../lib/util.js';
 import { loadTenant, requireRole } from '../../middleware/auth.js';
 import { planRoute } from './route.js';
 import { upsertEventExpense } from '../finance/routes.js';
+import { assertWithinPlan } from '../billing/metering.js';
 import type { Deps, TenantRow } from '../../types.js';
 
 const MANAGERS = ['owner', 'manager', 'coordinator'] as const;
@@ -171,6 +172,7 @@ export async function sendShiftReminders(deps: Deps, t: TenantRow, shiftId: stri
     const consented = rows.length ? await db.select().from(schema.consents).where(and(
       inArray(schema.consents.contactId, rows.map((x) => x.c.id)), eq(schema.consents.channel, 'sms'), eq(schema.consents.purpose, 'reminder'), isNull(schema.consents.withdrawnAt),
     )) : [];
+    await assertWithinPlan(db, t, 'smsSent', now(deps), rows.length);
     let sent = 0, skipped = 0, failed = 0;
     const when = shift.startsAt.toLocaleString(t.region === 'IN' ? 'en-IN' : 'en-CA', { timeZone: t.timeZone, weekday: 'short', hour: 'numeric', minute: '2-digit' });
 

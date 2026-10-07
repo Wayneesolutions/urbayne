@@ -35,6 +35,7 @@ import { MemorySessions, RedisSessions } from './lib/sessions.js';
 import { createStore } from './lib/storage.js';
 import { fileRoutes } from './modules/files/routes.js';
 import { fontsRouter } from './lib/fonts.js';
+import { billingRoutes } from './modules/billing/routes.js';
 import { agencyAdminRoutes, agencyRoutes, tenantAgencyRoutes } from './modules/agency/routes.js';
 import type { Deps, DepsInit } from './types.js';
 
@@ -110,6 +111,7 @@ export function createApp(init: DepsInit) {
   app.use('/api/t/:tenantId/service', authed, serviceRoutes(deps));
   app.use('/api/t/:tenantId/results', authed, resultsRoutes(deps));
   app.use('/api/t/:tenantId/files', authed, fileRoutes(deps));
+  app.use('/api/t/:tenantId/billing', authed, billingRoutes(deps));
   app.use('/api/agencies', authed, agencyRoutes(deps));
   app.use('/api/t/:tenantId/agency', authed, tenantAgencyRoutes(deps));
   app.use('/api/admin', agencyAdminRoutes(deps));

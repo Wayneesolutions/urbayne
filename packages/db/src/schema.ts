@@ -456,13 +456,23 @@ export const subscriptions = pgTable('subscriptions', {
   smsRateMinor: bigint('sms_rate_minor', { mode: 'number' }).notNull().default(0),
   smsIncluded: integer('sms_included').notNull().default(0),
   taxPercent: numeric('tax_percent', { precision: 5, scale: 2 }),
+  /** The package this campaign is on (plans), its billing style, and a copy of the package terms taken when it was assigned. */
+  planCode: text('plan_code'),
+  billing: text('billing', { enum: ['per_campaign', 'monthly'] }).notNull().default('monthly'),
+  terms: jsonb('terms').$type<PlanTerms | null>(),
+  discountPercent: numeric('discount_percent', { precision: 5, scale: 2 }),
   status: text('status', { enum: ['trial', 'active', 'past_due', 'cancelled'] }).notNull().default('active'),
   startedOn: date('started_on').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-export interface InvoiceLine { description: string; quantity: number; unitMinor: number; amountMinor: number }
+export const METRICS = ['smsSent', 'callMinutes', 'assistantQuestions', 'contacts', 'teamMembers'] as const;
+export type Metric = (typeof METRICS)[number];
+export interface PlanTerms { included: Partial<Record<Metric, number>>; overageMinor: Partial<Record<Metric, number>>; hardLimits: Partial<Record<Metric, number>> }
+
+/** metric: which meter an overage line bills, so a later invoice can bill only what is new. */
+export interface InvoiceLine { description: string; quantity: number; unitMinor: number; amountMinor: number; metric?: Metric }
 export const invoices = pgTable('invoices', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull(),
@@ -610,6 +620,21 @@ export const households = pgTable('households', {
   address: text('address'),
   electors: integer('electors'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const plans = pgTable('plans', {
+  code: text('code').primaryKey(),
+  name: text('name').notNull(),
+  region: text('region', { enum: ['IN', 'CA'] }).notNull(),
+  currency: text('currency', { enum: ['INR', 'CAD'] }).notNull(),
+  billing: text('billing', { enum: ['per_campaign', 'monthly'] }).notNull(),
+  priceMinor: bigint('price_minor', { mode: 'number' }).notNull(),
+  included: jsonb('included').$type<PlanTerms['included']>().notNull().default({}),
+  overageMinor: jsonb('overage_minor').$type<PlanTerms['overageMinor']>().notNull().default({}),
+  hardLimits: jsonb('hard_limits').$type<PlanTerms['hardLimits']>().notNull().default({}),
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const audioClips = pgTable('audio_clips', {

@@ -5,7 +5,8 @@ import { eq } from 'drizzle-orm';
 import { schema, withTenant, ROLES } from '@cs/db';
 import { encrypt, hashPhone, normalisePhone, decrypt } from '../lib/crypto.js';
 import { HttpError, ah } from '../lib/http.js';
-import { maskPhone } from '../lib/util.js';
+import { maskPhone, now } from '../lib/util.js';
+import { assertWithinPlan } from '../modules/billing/metering.js';
 import { loadTenant, requireRole } from '../middleware/auth.js';
 import type { Deps } from '../types.js';
 
@@ -31,6 +32,7 @@ export function memberRoutes(deps: Deps) {
     const phoneHash = hashPhone(phone, env.PHONE_HASH_KEY);
     const t = req.tenant!;
     const out = await withTenant(pool, t.id, async (db) => {
+      await assertWithinPlan(db, t, 'teamMembers', now(deps));
       let [u] = await db.select().from(schema.users).where(eq(schema.users.phoneHash, phoneHash));
       if (!u) [u] = await db.insert(schema.users).values({ phoneHash, phoneEnc: encrypt(phone, env.PHONE_ENC_KEY), name: b.name }).returning();
       const [m] = await db.insert(schema.memberships).values({ tenantId: t.id, userId: u!.id, role: b.role }).onConflictDoNothing().returning();

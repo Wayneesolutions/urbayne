@@ -8,6 +8,7 @@ import { encrypt, hashPhone, normalisePhone } from '../lib/crypto.js';
 import { HttpError, ah } from '../lib/http.js';
 import { loadTenant, requireRole } from '../middleware/auth.js';
 import { addConsents } from '../modules/privacy/consent.js';
+import { assertWithinPlan } from '../modules/billing/metering.js';
 import type { Deps } from '../types.js';
 
 const consentSchema = z.object({
@@ -70,6 +71,7 @@ export function contactRoutes(deps: Deps) {
     const phone = normalisePhone(b.phone);
     let suppressed = false as boolean;
     const row = await withTenant(pool, t.id, async (db) => {
+      await assertWithinPlan(db, t, 'contacts', now(deps));
       const phoneHash = hashPhone(phone, env.PHONE_HASH_KEY);
       // Someone who opted out (or asked to be erased) stays blocked even if their number shows up on a new list.
       const [sup] = await db.select().from(schema.suppressions).where(eq(schema.suppressions.phoneHash, phoneHash));

@@ -5,6 +5,7 @@ import { checkOutbound } from '@cs/compliance';
 import { voiceFor, type CallResult } from '@cs/channels';
 import { decrypt } from '../../lib/crypto.js';
 import { channelEnv, now } from '../../lib/util.js';
+import { planLimitReached } from '../billing/metering.js';
 import type { Deps } from '../../types.js';
 
 export const HOURLY_CAP = 2000;
@@ -49,6 +50,13 @@ export async function processRun(deps: Deps, tenantId: string, runId: string): P
     const step = await withTenant(deps.pool, tenantId, async (db) => {
       const [run] = await db.select({ status: schema.campaignRuns.status }).from(schema.campaignRuns).where(eq(schema.campaignRuns.id, runId));
       if (run?.status !== 'running') return { kind: 'stop' as const };
+      // A capped package: when the call minutes are used up the run pauses (nothing is lost, calls stay queued) until the package is raised.
+      const hit = await planLimitReached(db, tenant, 'callMinutes', now(deps));
+      if (hit) {
+        await db.update(schema.campaignRuns).set({ status: 'paused', updatedAt: new Date() }).where(eq(schema.campaignRuns.id, runId));
+        await db.insert(schema.auditLog).values({ tenantId, action: 'usage_limit_pause', entity: 'campaign_run', entityId: runId, after: { metric: 'callMinutes', ...hit } });
+        return { kind: 'stop' as const };
+      }
       const [next] = await db.select().from(schema.interactions)
         .where(and(eq(schema.interactions.runId, runId), eq(schema.interactions.status, 'queued')))
         .orderBy(asc(schema.interactions.createdAt), asc(schema.interactions.id)).limit(1)
