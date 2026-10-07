@@ -625,6 +625,46 @@ export const audioClips = pgTable('audio_clips', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const agencies = pgTable('agencies', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull(),
+  brandName: text('brand_name'),
+  primaryColor: text('primary_color'),
+  supportEmail: text('support_email'),
+  createdBy: uuid('created_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const agencyMembers = pgTable('agency_members', {
+  agencyId: uuid('agency_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  role: text('role', { enum: ['admin', 'staff'] }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const agencyInvites = pgTable('agency_invites', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  codeHash: text('code_hash').notNull(),
+  whiteLabel: boolean('white_label').notNull().default(false),
+  createdBy: uuid('created_by'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const agencyLinks = pgTable('agency_links', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  agencyId: uuid('agency_id').notNull(),
+  tenantId: uuid('tenant_id').notNull(),
+  status: text('status', { enum: ['active', 'revoked'] }).notNull().default('active'),
+  whiteLabel: boolean('white_label').notNull().default(false),
+  linkedBy: uuid('linked_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+});
+
 export const bankStatements = pgTable('bank_statements', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull(),
