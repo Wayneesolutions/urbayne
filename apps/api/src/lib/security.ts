@@ -38,7 +38,8 @@ export function voterPage(file: string): RequestHandler {
   return (_req, res) => {
     const nonce = randomBytes(16).toString('base64');
     res.setHeader('Content-Security-Policy', [
-      "default-src 'self'", `script-src 'nonce-${nonce}'`, `style-src 'self' 'unsafe-inline' ${FONTS_STYLE}`, `font-src ${FONTS_FILES}`,
+      // Nothing from a third party: fonts come from this server (see lib/fonts.ts), so a voter's phone contacts only the campaign's own address.
+      "default-src 'self'", `script-src 'nonce-${nonce}'`, "style-src 'self' 'unsafe-inline'", "font-src 'self'",
       "img-src 'self' data:", "connect-src 'self'", "media-src 'self' blob:", "frame-ancestors 'none'", "base-uri 'self'", "form-action 'self'", "object-src 'none'",
     ].join('; '));
     res.type('html').send(html.replace(/<script>/g, `<script nonce="${nonce}">`));

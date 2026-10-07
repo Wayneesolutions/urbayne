@@ -10,6 +10,8 @@ import { rateLimit } from '../../lib/rate-limit.js';
 import { verifySignature } from '../../lib/seal.js';
 import { evidenceKeys } from '../../lib/evidence-key.js';
 import { answer, assistantText } from '../assistant/answer.js';
+import { playableClips, serveAudio } from '../audio/audio.js';
+import { loadFile } from '../files/files.js';
 import type { Deps } from '../../types.js';
 
 export const CONSENT_TEXT_VERSION = 'public-form-v1';
@@ -44,9 +46,9 @@ export function publicRoutes(deps: Deps) {
     const region = getRegion(t.region);
     res.json({
       slug: t.slug, region: t.region, candidateName: t.candidateName ?? t.campaignName, campaignName: t.campaignName,
-      tagline: t.tagline, officialInfoUrl: t.officialInfoUrl, locales: region.locales.filter((l) => ['pa', 'hi', 'en'].includes(l) || t.region === 'CA'),
+      tagline: t.tagline, officialInfoUrl: t.officialInfoUrl, locales: region.locales,
       defaultLocale: region.defaultLocale, demo: t.isDemo,
-      assistantDisclosure: Object.fromEntries(['en', 'pa', 'hi'].map((l) => [l, assistantText(l).disclosure])),
+      assistantDisclosure: Object.fromEntries(['en', 'pa', 'hi', 'fr', 'tl'].map((l) => [l, assistantText(l).disclosure])),
     });
   }));
 
@@ -84,9 +86,27 @@ export function publicRoutes(deps: Deps) {
       const inLocale = pages.filter((p) => p.locale === locale);
       const chosen = (inLocale.length ? inLocale : pages.filter((p) => p.locale === 'en'))
         .sort((a, b) => Number(b.geoAreaId === area.id) - Number(a.geoAreaId === area.id));
-      return { area: { id: area.id, nameEn: area.nameEn, namePa: area.namePa, nameHi: area.nameHi, level: area.level }, pages: chosen };
+      // A recorded voice for each page, only while it still matches the approved text.
+      const clips = await playableClips(db, chosen.map((p) => p.id));
+      return {
+        area: { id: area.id, nameEn: area.nameEn, namePa: area.namePa, nameHi: area.nameHi, level: area.level },
+        pages: chosen.map((p) => ({ ...p, audioUrl: clips.has(p.id) ? `/api/public/${req.params.slug}/audio/${p.id}` : null })),
+      };
     });
     res.json(out);
+  }));
+
+  /** The recording of an approved page. Only served while it matches the page's current text. */
+  r.get('/:slug/audio/:pageId', ah(async (req, res) => {
+    const id = await tenantIdBySlug(deps, req.params.slug!);
+    const pageId = z.string().uuid().parse(req.params.pageId);
+    const { file, body } = await withTenant(pool, id, async (db) => {
+      const clips = await playableClips(db, [pageId]);
+      const c = clips.get(pageId);
+      if (!c) throw new HttpError(404, 'NO_AUDIO');
+      return loadFile(deps, db, c.fileId, 'audio');
+    });
+    serveAudio(req, res, body, file.contentType, file.sha256);
   }));
 
   r.post('/:slug/signup', rateLimit(deps.rateStore, 10, 60_000), ah(async (req, res) => {

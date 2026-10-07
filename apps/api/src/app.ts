@@ -34,6 +34,7 @@ import { MemoryRateStore, RedisRateStore } from './lib/rate-limit.js';
 import { MemorySessions, RedisSessions } from './lib/sessions.js';
 import { createStore } from './lib/storage.js';
 import { fileRoutes } from './modules/files/routes.js';
+import { fontsRouter } from './lib/fonts.js';
 import type { Deps, DepsInit } from './types.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -79,6 +80,7 @@ export function createApp(init: DepsInit) {
   app.use('/s', shortLinkRedirect(deps));
   app.use('/webhooks', vapiWebhook(deps));
   app.use('/webhooks/sms', inboundSmsRoutes(deps));
+  app.use('/fonts', fontsRouter());
   app.get('/v/:slug', voterPage(path.join(here, 'public', 'voter.html')));
   // Residents' page for constituent service: report a problem and check its progress.
   app.get('/help/:slug', voterPage(path.join(here, 'public', 'help.html')));

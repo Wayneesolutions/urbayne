@@ -27,6 +27,9 @@ export const CA: RegionConfig = {
       en: 'This is an automated call on behalf of',
       pa: 'ਇਹ ਇੱਕ ਆਟੋਮੈਟਿਕ ਕਾਲ ਹੈ, ਜੋ ਇਹਨਾਂ ਵੱਲੋਂ ਹੈ',
       hi: 'यह एक स्वचालित कॉल है, जो इनकी ओर से है',
+      // Draft translations: confirm wording with counsel and a native speaker (see confirmWithCounsel).
+      fr: "Ceci est un appel automatisé de la part de",
+      tl: 'Ito ay isang awtomatikong tawag mula sa',
     },
   },
   automatedDonationAsk: 'express_consent_only',

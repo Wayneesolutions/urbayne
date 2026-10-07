@@ -612,6 +612,19 @@ export const households = pgTable('households', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const audioClips = pgTable('audio_clips', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  contentItemId: uuid('content_item_id').notNull(),
+  fileId: uuid('file_id').notNull(),
+  bodySha256: text('body_sha256').notNull(),
+  durationMs: integer('duration_ms'),
+  recordedBy: text('recorded_by'),
+  createdBy: uuid('created_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const bankStatements = pgTable('bank_statements', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull(),
