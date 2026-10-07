@@ -8,6 +8,7 @@ import type { SessionStore } from './lib/sessions.js';
 import type { Queues } from './lib/queues.js';
 import type { Logger } from 'pino';
 import type { ErrorReporter } from './lib/observability.js';
+import type { BlobStore } from './lib/storage.js';
 
 /** What callers (index.ts, tests) pass in; createApp fills the rest with in-memory defaults. */
 export interface DepsInit {
@@ -21,6 +22,8 @@ export interface DepsInit {
   queues?: Queues;
   log?: Logger;
   reporter?: ErrorReporter;
+  /** Where uploaded files are kept. Defaults to the driver chosen in the environment (local folder, or the region's S3 bucket). */
+  store?: BlobStore;
   /** Injectable clock (tests and demos). */
   now?: () => Date;
   /** Override channels (tests). */
@@ -34,6 +37,7 @@ export interface Deps extends DepsInit {
   sessions: SessionStore;
   log: Logger;
   reporter: ErrorReporter;
+  store: BlobStore;
 }
 
 export type EffectiveRole = Role | 'wes_admin';

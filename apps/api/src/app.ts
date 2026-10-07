@@ -32,6 +32,8 @@ import { serviceAdminRoutes } from './modules/service/admin.js';
 import { resultsRoutes } from './modules/results/routes.js';
 import { MemoryRateStore, RedisRateStore } from './lib/rate-limit.js';
 import { MemorySessions, RedisSessions } from './lib/sessions.js';
+import { createStore } from './lib/storage.js';
+import { fileRoutes } from './modules/files/routes.js';
 import type { Deps, DepsInit } from './types.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -44,6 +46,7 @@ export function resolveDeps(init: DepsInit): Deps {
     sessions: init.sessions ?? (init.redis ? new RedisSessions(init.redis) : new MemorySessions()),
     log: init.log ?? createLogger({ level: init.env.LOG_LEVEL ?? (init.env.NODE_ENV === 'test' ? 'silent' : 'info') }),
     reporter: init.reporter ?? new NoopReporter(),
+    store: init.store ?? createStore(init.env),
   };
 }
 
@@ -103,6 +106,7 @@ export function createApp(init: DepsInit) {
   app.use('/api/t/:tenantId/costs', authed, costRoutes(deps));
   app.use('/api/t/:tenantId/service', authed, serviceRoutes(deps));
   app.use('/api/t/:tenantId/results', authed, resultsRoutes(deps));
+  app.use('/api/t/:tenantId/files', authed, fileRoutes(deps));
   app.use('/api/admin', adminCostRoutes(deps));
   app.use('/api/admin', serviceAdminRoutes(deps));
 

@@ -13,6 +13,7 @@
     "vapi:verify": "tsx src/scripts/vapi-verify.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1146.0",
     "@cs/channels": "workspace:*",
     "@cs/compliance": "workspace:*",
     "@cs/db": "workspace:*",
@@ -31,6 +32,7 @@
     "pg": "^8.13.0",
     "pino": "^10.4.0",
     "qrcode": "^1.5.4",
+    "read-excel-file": "^9.3.10",
     "zod": "^3.23.0"
   },
   "devDependencies": {

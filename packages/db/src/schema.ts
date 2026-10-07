@@ -339,6 +339,8 @@ export const financeEntries = pgTable('finance_entries', {
   eligibleAttested: boolean('eligible_attested').notNull().default(false),
   receiptNo: text('receipt_no'),
   receiptFile: text('receipt_file'),
+  /** The uploaded receipt photo or PDF (stored_files). */
+  receiptFileId: uuid('receipt_file_id'),
   source: text('source', { enum: ['manual', 'event', 'call_run'] }).notNull().default('manual'),
   sourceRef: uuid('source_ref'),
   flags: jsonb('flags').$type<{ code: string; message: string }[]>().notNull().default([]),
@@ -560,4 +562,53 @@ export const resultsArchives = pgTable('results_archives', {
   takenAt: timestamp('taken_at', { withTimezone: true }).notNull().defaultNow(),
   takenBy: uuid('taken_by'),
   summary: jsonb('summary').notNull(),
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Phase 4: stored files and bank reconciliation.
+
+export const FILE_PURPOSES = ['receipt', 'bank_statement', 'roll_proof', 'audio'] as const;
+export type FilePurpose = (typeof FILE_PURPOSES)[number];
+
+export const storedFiles = pgTable('stored_files', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  purpose: text('purpose', { enum: FILE_PURPOSES }).notNull(),
+  storageKey: text('storage_key').notNull(),
+  contentType: text('content_type').notNull(),
+  bytes: integer('bytes').notNull(),
+  sha256: text('sha256').notNull(),
+  originalName: text('original_name'),
+  uploadedBy: uuid('uploaded_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+});
+
+export const bankStatements = pgTable('bank_statements', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  fileId: uuid('file_id'),
+  label: text('label').notNull(),
+  periodFrom: date('period_from'),
+  periodTo: date('period_to'),
+  lineCount: integer('line_count').notNull().default(0),
+  uploadedBy: uuid('uploaded_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const bankLines = pgTable('bank_lines', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  statementId: uuid('statement_id').notNull(),
+  lineNo: integer('line_no').notNull(),
+  lineDate: date('line_date').notNull(),
+  description: text('description').notNull().default(''),
+  reference: text('reference'),
+  direction: text('direction', { enum: ['debit', 'credit'] }).notNull(),
+  amountMinor: bigint('amount_minor', { mode: 'number' }).notNull(),
+  matchStatus: text('match_status', { enum: ['unmatched', 'suggested', 'matched', 'ignored'] }).notNull().default('unmatched'),
+  matchedEntryId: uuid('matched_entry_id'),
+  matchNote: text('match_note'),
+  matchedBy: uuid('matched_by'),
+  matchedAt: timestamp('matched_at', { withTimezone: true }),
 });
