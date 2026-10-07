@@ -126,8 +126,8 @@ export function createApp(init: DepsInit) {
 
   const dash = path.resolve(here, '../../dashboard/dist');
   if (existsSync(dash)) {
-    app.use('/admin', strictCsp, express.static(dash));
-    app.get('/admin/*', strictCsp, (_req, res) => res.sendFile(path.join(dash, 'index.html')));
+    app.use('/admin', dashCsp, express.static(dash));
+    app.get('/admin/*', dashCsp, (_req, res) => res.sendFile(path.join(dash, 'index.html')));
   }
 
   app.use(errorHandlerFor(deps.log, deps.reporter));

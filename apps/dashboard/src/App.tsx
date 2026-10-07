@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Navigate, NavLink, Route, Routes, useNavigate, useParams, Outlet } from 'react-router-dom';
+import { Link, Navigate, NavLink, Route, Routes, useNavigate, useParams, Outlet } from 'react-router-dom';
 import { api, session } from './api';
 import { Login } from './pages/Login';
 import { Overview } from './pages/Overview';
@@ -20,6 +20,7 @@ import { Results } from './pages/Results';
 import { Pack } from './pages/Pack';
 import { Billing } from './pages/Billing';
 import { Agency } from './pages/Agency';
+import { Platform } from './pages/Platform';
 
 export interface Tenant { kind?: 'campaign' | 'office'; serviceSlaDays?: number; ticketRetentionDays?: number | null; id: string; region: 'IN' | 'CA'; campaignName: string; candidateName?: string; slug?: string; isDemo: boolean; seatCode: string; electionDate: string; pollCloseAt?: string; timeZone: string }
 
@@ -28,6 +29,7 @@ export function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/" element={<RequireAuth><CampaignPicker /></RequireAuth>} />
+      <Route path="/platform" element={<RequireAuth><Platform /></RequireAuth>} />
       <Route path="/agency/:agencyId" element={<RequireAuth><Agency /></RequireAuth>} />
       <Route path="/c/:tenantId" element={<RequireAuth><Shell /></RequireAuth>}>
         <Route index element={<Overview />} />
@@ -60,11 +62,12 @@ function RequireAuth({ children }: { children: JSX.Element }) {
 
 function CampaignPicker() {
   const [list, setList] = useState<{ tenant_id: string; campaign_name: string; region: string; role: string }[] | null>(null);
+  const [isStaff, setIsStaff] = useState(false);
   const [agencies, setAgencies] = useState<{ id: string; name: string; brandName: string | null; role: string }[]>([]);
   const nav = useNavigate();
   useEffect(() => {
     Promise.all([api('/auth/me'), api('/agencies/mine').catch(() => [])]).then(([m, ag]) => {
-      setList(m.campaigns); setAgencies(ag);
+      setList(m.campaigns); setAgencies(ag); setIsStaff(Boolean(m.user?.wes));
       if (m.campaigns.length === 1 && !ag.length) nav(`/c/${m.campaigns[0].tenant_id}`, { replace: true });
       if (!m.campaigns.length && ag.length === 1) nav(`/agency/${ag[0].id}`, { replace: true });
     });
@@ -75,6 +78,7 @@ function CampaignPicker() {
       <div className="panel narrow">
         <h1>Your campaigns</h1>
         {list.length === 0 && agencies.length === 0 && <p className="muted">You are not part of a campaign yet. Ask the campaign owner for an invite.</p>}
+        {isStaff && <p><Link className="btn" to="/platform">Packages and pricing (platform staff)</Link></p>}
         {agencies.length > 0 && <><h2 className="small muted">Your agency</h2><ul className="picker">{agencies.map((a) => <li key={a.id}><button onClick={() => nav(`/agency/${a.id}`)}><strong>{a.brandName ?? a.name}</strong><span className="muted">All campaigns · {a.role}</span></button></li>)}</ul></>}
         <ul className="picker">{list.map((c) => (
           <li key={c.tenant_id}><button onClick={() => nav(`/c/${c.tenant_id}`)}><strong>{c.campaign_name}</strong><span className="muted">{c.region === 'IN' ? 'India' : 'Canada'} · {c.role}</span></button></li>
