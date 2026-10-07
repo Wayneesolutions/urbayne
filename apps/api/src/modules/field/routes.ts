@@ -21,7 +21,7 @@ export function fieldRoutes(deps: Deps) {
   // ----- managers -----
   r.get('/turfs', requireRole(...MANAGERS), ah(async (req, res) => {
     const rows = await withTenant(pool, req.tenant!.id, async (db) => {
-      const turfs = await db.select({ t: schema.turfs, area: schema.geoAreas.nameEn, worker: schema.users.name })
+      const turfs = await db.select({ t: schema.turfs, area: schema.geoAreas.nameEn, shape: schema.geoAreas.polygon, worker: schema.users.name })
         .from(schema.turfs).innerJoin(schema.geoAreas, eq(schema.geoAreas.id, schema.turfs.geoAreaId))
         .leftJoin(schema.users, eq(schema.users.id, schema.turfs.assignedUserId)).orderBy(schema.turfs.name);
       const fromContacts = await db.select({ area: schema.contacts.geoAreaId, n: sql<number>`count(*)::int` }).from(schema.contacts).groupBy(schema.contacts.geoAreaId);
@@ -29,8 +29,8 @@ export function fieldRoutes(deps: Deps) {
       const households = [...fromContacts, ...fromRolls.map((x) => ({ area: x.area as string | null, n: x.n }))];
       const visited = await db.select({ turf: schema.doorVisits.turfId, n: sql<number>`count(distinct coalesce(${schema.doorVisits.contactId}::text, ${schema.doorVisits.household}))::int` })
         .from(schema.doorVisits).groupBy(schema.doorVisits.turfId);
-      return turfs.map(({ t, area, worker }) => ({
-        ...t, area, worker,
+      return turfs.map(({ t, area, shape, worker }) => ({
+        ...t, area, worker, shape,
         households: households.filter((h) => h.area === t.geoAreaId).reduce((s, h) => s + h.n, 0),
         visited: visited.find((v) => v.turf === t.id)?.n ?? 0,
       }));

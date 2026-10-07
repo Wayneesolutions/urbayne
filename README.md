@@ -12,6 +12,8 @@ One codebase, two editions: India (`IN`) and Canada (`CA`). See the Engineering 
 | `apps/api` | Express API: phone OTP login with JWT, campaign (tenant) creation, content drafting and approval (MCMC certificate in IN, owner approval in CA, disclosure check on scripts, edits reset to draft), contacts with consent capture and data-source guardrails, and a compliance dry-run endpoint. 11 integration tests against real Postgres. |
 | `scripts/guardrails.mjs` | CI check that fails the build if any WhatsApp automation dependency is added. |
 
+**Phases 4 and 5** (maps and road routing, roll imports, recorded voice, receipts and bank reconciliation, agencies, Punjab and Manitoba 2027 packages, pricing and metering) are described in [docs/phase4-5.md](docs/phase4-5.md), including what is **not** done.
+
 ## Run locally without Docker (Windows friendly)
 
 ```bash

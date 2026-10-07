@@ -17,6 +17,9 @@ import { Service } from './pages/Service';
 import { ServiceReports } from './pages/ServiceReports';
 import { ServiceSetup } from './pages/ServiceSetup';
 import { Results } from './pages/Results';
+import { Pack } from './pages/Pack';
+import { Billing } from './pages/Billing';
+import { Agency } from './pages/Agency';
 
 export interface Tenant { kind?: 'campaign' | 'office'; serviceSlaDays?: number; ticketRetentionDays?: number | null; id: string; region: 'IN' | 'CA'; campaignName: string; candidateName?: string; slug?: string; isDemo: boolean; seatCode: string; electionDate: string; pollCloseAt?: string; timeZone: string }
 
@@ -25,6 +28,7 @@ export function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/" element={<RequireAuth><CampaignPicker /></RequireAuth>} />
+      <Route path="/agency/:agencyId" element={<RequireAuth><Agency /></RequireAuth>} />
       <Route path="/c/:tenantId" element={<RequireAuth><Shell /></RequireAuth>}>
         <Route index element={<Overview />} />
         <Route path="content" element={<Content />} />
@@ -42,6 +46,8 @@ export function App() {
         <Route path="service" element={<Service />} />
         <Route path="service/reports" element={<ServiceReports />} />
         <Route path="service/setup" element={<ServiceSetup />} />
+        <Route path="checklist" element={<Pack />} />
+        <Route path="billing" element={<Billing />} />
       </Route>
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
@@ -54,14 +60,22 @@ function RequireAuth({ children }: { children: JSX.Element }) {
 
 function CampaignPicker() {
   const [list, setList] = useState<{ tenant_id: string; campaign_name: string; region: string; role: string }[] | null>(null);
+  const [agencies, setAgencies] = useState<{ id: string; name: string; brandName: string | null; role: string }[]>([]);
   const nav = useNavigate();
-  useEffect(() => { api('/auth/me').then((m) => { setList(m.campaigns); if (m.campaigns.length === 1) nav(`/c/${m.campaigns[0].tenant_id}`, { replace: true }); }); }, [nav]);
+  useEffect(() => {
+    Promise.all([api('/auth/me'), api('/agencies/mine').catch(() => [])]).then(([m, ag]) => {
+      setList(m.campaigns); setAgencies(ag);
+      if (m.campaigns.length === 1 && !ag.length) nav(`/c/${m.campaigns[0].tenant_id}`, { replace: true });
+      if (!m.campaigns.length && ag.length === 1) nav(`/agency/${ag[0].id}`, { replace: true });
+    });
+  }, [nav]);
   if (!list) return <div className="centered muted">Loading…</div>;
   return (
     <div className="centered">
       <div className="panel narrow">
         <h1>Your campaigns</h1>
-        {list.length === 0 && <p className="muted">You are not part of a campaign yet. Ask the campaign owner for an invite.</p>}
+        {list.length === 0 && agencies.length === 0 && <p className="muted">You are not part of a campaign yet. Ask the campaign owner for an invite.</p>}
+        {agencies.length > 0 && <><h2 className="small muted">Your agency</h2><ul className="picker">{agencies.map((a) => <li key={a.id}><button onClick={() => nav(`/agency/${a.id}`)}><strong>{a.brandName ?? a.name}</strong><span className="muted">All campaigns · {a.role}</span></button></li>)}</ul></>}
         <ul className="picker">{list.map((c) => (
           <li key={c.tenant_id}><button onClick={() => nav(`/c/${c.tenant_id}`)}><strong>{c.campaign_name}</strong><span className="muted">{c.region === 'IN' ? 'India' : 'Canada'} · {c.role}</span></button></li>
         ))}</ul>
@@ -75,9 +89,10 @@ export type ShellCtx = { tenant: Tenant; role: string; reload: () => void };
 function Shell() {
   const { tenantId } = useParams();
   const [ctx, setCtx] = useState<{ tenant: Tenant; role: string } | null>(null);
+  const [brand, setBrand] = useState<{ brandName: string; primaryColor: string | null; supportEmail: string | null } | null>(null);
   const nav = useNavigate();
   const load = () => api(`/tenants/${tenantId}`).then(setCtx).catch(() => nav('/'));
-  useEffect(() => { load(); }, [tenantId]);
+  useEffect(() => { load(); api(`/t/${tenantId}/agency/branding`).then((b) => setBrand(b.agency)).catch(() => setBrand(null)); }, [tenantId]);
   if (!ctx) return <div className="centered muted">Loading…</div>;
   const t = ctx.tenant;
   const link = (to: string, label: string) => <NavLink end={to === ''} to={`/c/${t.id}/${to}`}>{label}</NavLink>;
@@ -113,7 +128,13 @@ function Shell() {
           <span className="nav-group">Money and team</span>
           {link('finance', t.region === 'IN' ? 'Expenditure' : 'Finance')}
           {link('team', 'Team')}
+          {(ctx.role === 'owner' || ctx.role === 'manager') && <>
+            <span className="nav-group">Setup</span>
+            {link('checklist', 'Election checklist')}
+            {link('billing', 'Package and usage')}
+          </>}
         </nav>
+        {brand?.supportEmail && <a className="side-meta" href={`mailto:${brand.supportEmail}`}>Help: {brand.supportEmail}</a>}
         <button className="linklike side-out" onClick={() => { session.clear(); nav('/login'); }}>Sign out</button>
       </aside>
       <main className="work"><Outlet context={{ ...ctx, reload: load } satisfies ShellCtx} /></main>

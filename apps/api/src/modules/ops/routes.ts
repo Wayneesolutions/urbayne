@@ -9,6 +9,7 @@ import { decrypt } from '../../lib/crypto.js';
 import { channelEnv, now } from '../../lib/util.js';
 import { loadTenant, requireRole } from '../../middleware/auth.js';
 import { planRoute } from './route.js';
+import { roadTrip } from '../../lib/routing.js';
 import { upsertEventExpense } from '../finance/routes.js';
 import { assertWithinPlan } from '../billing/metering.js';
 import type { Deps, TenantRow } from '../../types.js';
@@ -136,9 +137,13 @@ export function opsRoutes(deps: Deps) {
     if (!located.length) return res.json({ order: [], km: 0, unlocated: pts.length });
     const start = t.officeLat != null && t.officeLng != null ? { lat: t.officeLat, lng: t.officeLng } : located[0]!;
     const plan = planRoute(start, located);
+    // With a road server configured, the order and distance come from the road network (and the road line is returned for the map).
+    const road = await roadTrip(env.ROUTING_BASE_URL, start, located, deps.fetch ?? fetch);
+    const ids = road ? road.order : plan.order.map((o) => o.id);
     res.json({
-      start, km: plan.km, unlocated: pts.length - located.length,
-      order: plan.order.map((o) => { const s = pts.find((p) => p.id === o.id)!; return { id: s.id, address: s.address, lat: s.lat, lng: s.lng }; }),
+      start, unlocated: pts.length - located.length,
+      routing: road ? 'road' : 'straight_line', km: road ? road.km : plan.km, minutes: road?.minutes ?? null, geometry: road?.geometry ?? null,
+      order: ids.map((id) => { const s = pts.find((p) => p.id === id)!; return { id: s.id, address: s.address, lat: s.lat, lng: s.lng }; }),
     });
   }));
 

@@ -24,6 +24,8 @@ export interface DepsInit {
   reporter?: ErrorReporter;
   /** Where uploaded files are kept. Defaults to the driver chosen in the environment (local folder, or the region's S3 bucket). */
   store?: BlobStore;
+  /** Outgoing HTTP for the road routing server (tests pass a stub). */
+  fetch?: typeof fetch;
   /** Injectable clock (tests and demos). */
   now?: () => Date;
   /** Override channels (tests). */

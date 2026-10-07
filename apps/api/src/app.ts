@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { getRegion } from '@cs/regions';
 import { errorHandlerFor } from './lib/http.js';
 import { createLogger, requestLogger } from './lib/logger.js';
-import { securityHeaders, strictCsp, voterPage } from './lib/security.js';
+import { dashboardCsp, securityHeaders, strictCsp, voterPage } from './lib/security.js';
 import { NoopReporter } from './lib/observability.js';
 import { costRoutes, adminCostRoutes } from './modules/observability/costs.js';
 import { requireUser } from './middleware/auth.js';
@@ -74,7 +74,7 @@ export function createApp(init: DepsInit) {
   });
   app.get('/api/region', (_req, res) => {
     const r = getRegion(deps.env.DEPLOY_REGION);
-    res.json({ code: r.code, locales: r.locales, defaultLocale: r.defaultLocale, currency: r.currency, geographyLevels: r.geographyLevels });
+    res.json({ code: r.code, locales: r.locales, defaultLocale: r.defaultLocale, currency: r.currency, geographyLevels: r.geographyLevels, map: { tileUrl: deps.env.MAP_TILE_URL, attribution: deps.env.MAP_ATTRIBUTION } });
   });
 
   // Public (no login)
@@ -121,7 +121,9 @@ export function createApp(init: DepsInit) {
   app.use('/api/admin', adminCostRoutes(deps));
   app.use('/api/admin', serviceAdminRoutes(deps));
 
-  // Built dashboard (apps/dashboard/dist), if present.
+  // Built dashboard (apps/dashboard/dist), if present. Its CSP also allows map pictures from the configured tile server.
+  const dashCsp = dashboardCsp(deps.env.MAP_TILE_URL);
+
   const dash = path.resolve(here, '../../dashboard/dist');
   if (existsSync(dash)) {
     app.use('/admin', strictCsp, express.static(dash));

@@ -44,3 +44,8 @@ output "alarm_topic_arn" {
 output "data_region" {
   value = data.aws_region.current.name
 }
+
+output "files_bucket" {
+  description = "Private bucket for uploaded files (receipts, statements, roll copies, recordings), in this region."
+  value       = aws_s3_bucket.files.bucket
+}

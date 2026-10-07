@@ -79,6 +79,10 @@ locals {
     PORT            = "4000"
     PUBLIC_BASE_URL = "https://${var.domain_name}"
     LOG_LEVEL       = "info"
+    # Uploaded files go to this region's own private bucket (files.tf); the app refuses a bucket region that is not its data region.
+    STORAGE_DRIVER = "s3"
+    FILES_BUCKET   = aws_s3_bucket.files.bucket
+    FILES_REGION   = data.aws_region.current.name
   }, var.app_env)
 
   secret_ref = { for k in concat(
