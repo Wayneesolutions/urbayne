@@ -42,6 +42,7 @@
     "@types/pg": "^8.11.0",
     "@types/qrcode": "^1.5.5",
     "@types/supertest": "^6.0.2",
-    "supertest": "^7.0.0"
+    "supertest": "^7.0.0",
+    "write-excel-file": "^4.1.1"
   }
 }

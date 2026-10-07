@@ -584,6 +584,34 @@ export const storedFiles = pgTable('stored_files', {
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
 });
 
+export const rollImports = pgTable('roll_imports', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  geoAreaId: uuid('geo_area_id').notNull(),
+  proofFileId: uuid('proof_file_id').notNull(),
+  sourceKind: text('source_kind', { enum: ['electoral_roll_copy', 'other_legal_list'] }).notNull(),
+  sourceDescription: text('source_description').notNull(),
+  format: text('format', { enum: ['csv', 'xlsx', 'rows'] }).notNull(),
+  rowsTotal: integer('rows_total').notNull(),
+  rowsImported: integer('rows_imported').notNull(),
+  rowsDuplicate: integer('rows_duplicate').notNull().default(0),
+  rowsRejected: integer('rows_rejected').notNull().default(0),
+  ignoredColumns: text('ignored_columns').array().notNull().default([]),
+  importedBy: uuid('imported_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const households = pgTable('households', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  geoAreaId: uuid('geo_area_id').notNull(),
+  rollImportId: uuid('roll_import_id').notNull(),
+  houseNo: text('house_no').notNull(),
+  address: text('address'),
+  electors: integer('electors'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const bankStatements = pgTable('bank_statements', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull(),
