@@ -11,7 +11,7 @@ What this release adds, how to switch it on, and **what is not done**. The roadm
 | 4.5 | Receipt photo upload (in-region storage), bank statement reconciliation | **Built** (S3 bucket per region in Terraform: not applied anywhere) |
 | 4.6 | Multi-campaign agency view (white-label) | **Built** |
 | 4.7 | French for the Canada edition, Tagalog voter-page content | **Built**; translations need a native-speaker review |
-| 5.1 | India: Punjab Vidhan Sabha 2027 package, Punjabi/Hindi pitch deck, MCMC workflow | **Package and checklist built. The pitch deck is not made** |
+| 5.1 | India: Punjab Vidhan Sabha 2027 package, Punjabi/Hindi pitch deck, MCMC workflow | **Package, checklist and a first-draft deck built** (`docs/pitch`, regenerate with `node build.cjs`; not rendered or reviewed, translations need a native speaker) |
 | 5.2 | Canada: Manitoba provincial 2027 package (provincial rules in region config) | **Built**; the legal figures are deliberately blank |
 | 5.3 | Mobile app wrapper (Android first) | **Configured, not built** (no Android SDK here) |
 | 5.4 | Pricing, metering and invoicing per campaign | **Built**; the actual prices are not set (they are data you enter) |
@@ -85,4 +85,4 @@ The voter page, the assistant (disclosure, hand-off, official-link texts) and th
 - **Metering** is computed from the campaign's own records (texts sent, call minutes rounded up per call, assistant questions, contacts, team size). `GET /api/t/:id/billing` (owner/manager) shows use against the package and the invoices.
 - **Caps** stop the action with a plain message: adding a team member or contact over the cap (HTTP 402), shift reminders over the SMS cap, and a call run **pauses** (calls stay queued) when call minutes reach the cap. Other texts (resident service texts, results texts) are metered and billed but not capped.
 - **Invoicing**: `POST /api/admin/invoices/generate {month}` now handles packages: per-campaign packages bill their price once, in the start month, then only units *beyond the included amount that were not billed before*; monthly packages bill pro rata then per month. Optional discount (on the package price) and tax (only if a rate was set: confirm the rate and invoice format with the accountant). The old service-office subscriptions bill exactly as before.
-- Not done: payment collection (payments are still marked by hand), tax invoice formats (GST/HST), a plan editor in the dashboard (API only), credit notes.
+- Not done: payment collection (payments are still marked by hand), tax invoice formats (GST/HST), credit notes.
