@@ -6,6 +6,8 @@ import { PasswordInput } from '../PasswordInput';
 type Type = 'super_admin' | 'admin' | 'user';
 const TYPE_LABEL: Record<Type, string> = { super_admin: 'Super admin', admin: 'Admin (platform staff)', user: 'User (candidate or team member)' };
 const blank = { name: '', email: '', type: 'admin' as Type, how: 'generate' as 'generate' | 'set' | 'invite', password: '' };
+const RACES = ['assembly', 'parliament', 'municipal', 'ward', 'trustee', 'panchayat', 'other'];
+const blankCamp = { email: '', name: '', campaignName: '', seatCode: '', raceType: 'assembly', electionDate: '', planCode: '', how: 'generate' as 'generate' | 'set' | 'invite', password: '' };
 
 /** Super admin portal: create accounts with an email and a password, change what they can do, disable them, reset their password. */
 export function SuperAdmin() {
@@ -15,6 +17,9 @@ export function SuperAdmin() {
   const [f, setF] = useState(blank);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [mail, setMail] = useState(true);
+  const [c, setC] = useState(blankCamp);
+  const [camps, setCamps] = useState<any[] | null>(null);
+  const [plans, setPlans] = useState<any[]>([]);
   useEffect(() => { authConfig().then((c) => setMail(c.passwordReset)); }, []);
   const [secret, setSecret] = useState<{ who: string; password: string } | null>(null);
   const load = (query = q) => api(`/superadmin/users${query ? `?q=${encodeURIComponent(query)}` : ''}`).then(setUsers).catch((x) => { if (x?.status === 403) nav('/'); else setMsg({ ok: false, text: errText(x) }); });
@@ -31,6 +36,22 @@ export function SuperAdmin() {
       setMsg({ ok: true, text: r.invited === false ? `Account created, but the invite email could not be sent. ${r.inviteError ?? ''}` : r.invited ? `Account created. An email with a link to choose a password was sent to ${r.email}.` : `Account created for ${r.email}. Give them the password below: they must change it when they first sign in.` });
       setF(blank); load();
     } catch (x) { setMsg({ ok: false, text: errText(x, 'Could not create the account.') }); }
+  }
+  const loadCamps = () => api('/superadmin/campaigns').then(setCamps).catch(() => {});
+  useEffect(() => { loadCamps(); api('/admin/plans').then(setPlans).catch(() => {}); }, []);
+
+  async function createCamp(e: React.FormEvent) {
+    e.preventDefault(); setMsg(null); setSecret(null);
+    try {
+      const r = await api('/superadmin/campaigns', { body: {
+        campaignName: c.campaignName, seatCode: c.seatCode, raceType: c.raceType, electionDate: c.electionDate,
+        owner: { email: c.email, ...(c.name ? { name: c.name } : {}), ...(c.how === 'set' ? { password: c.password } : {}), ...(c.how === 'invite' ? { sendInvite: true } : {}) },
+        ...(c.planCode ? { plan: { planCode: c.planCode } } : {}),
+      } });
+      if (r.owner.temporaryPassword) setSecret({ who: r.owner.email, password: r.owner.temporaryPassword });
+      setMsg({ ok: true, text: `Campaign “${r.campaign.campaignName}” created. ${r.owner.email} is its owner${r.plan ? ` on the ${r.plan} package` : ''}.${r.owner.invited ? ' A link to choose a password was emailed.' : ''}` });
+      setC(blankCamp); loadCamps(); load();
+    } catch (x) { setMsg({ ok: false, text: errText(x, 'Could not create the campaign.') }); }
   }
   const act = async (fn: () => Promise<any>, done?: (r: any) => string) => {
     setMsg(null); setSecret(null);
@@ -69,6 +90,39 @@ export function SuperAdmin() {
         <p className="muted small">A super admin can manage accounts. An admin is platform staff (packages, billing, support). A user has no platform powers: a candidate creates their campaign after signing in, and team members are added by the campaign owner.</p>
         <button className="btn primary" style={{ alignSelf: 'flex-start' }}>Create account</button>
       </form>
+
+      <form className="panel stack" onSubmit={createCamp}>
+        <h2>Create a campaign for a candidate</h2>
+        <p className="muted small">One step: the candidate’s account is made (or an existing one is used), they become the campaign’s owner, and the package is applied.</p>
+        <div className="grid4">
+          <label>Candidate email<input type="email" value={c.email} onChange={(e) => setC({ ...c, email: e.target.value })} required /></label>
+          <label>Candidate name<input value={c.name} onChange={(e) => setC({ ...c, name: e.target.value })} /></label>
+          <label>Campaign name<input value={c.campaignName} onChange={(e) => setC({ ...c, campaignName: e.target.value })} minLength={2} required /></label>
+          <label>Seat code<input value={c.seatCode} onChange={(e) => setC({ ...c, seatCode: e.target.value })} placeholder="e.g. PB-061" required /></label>
+          <label>Race<select value={c.raceType} onChange={(e) => setC({ ...c, raceType: e.target.value })}>{RACES.map((x) => <option key={x} value={x}>{x}</option>)}</select></label>
+          <label>Election date<input type="date" value={c.electionDate} onChange={(e) => setC({ ...c, electionDate: e.target.value })} required /></label>
+          <label>Package<select value={c.planCode} onChange={(e) => setC({ ...c, planCode: e.target.value })}>
+            <option value="">No package yet</option>{plans.filter((p) => p.active).map((p) => <option key={p.code} value={p.code}>{p.name} ({p.region})</option>)}</select></label>
+          <label>Password<select value={c.how} onChange={(e) => setC({ ...c, how: e.target.value as any })}>
+            <option value="generate">Generate one for me</option><option value="set">I will type one</option>{mail && <option value="invite">Email them a link to choose</option>}</select></label>
+        </div>
+        {c.how === 'set' && <label>Password (at least 10 characters)<PasswordInput value={c.password} onChange={(e) => setC({ ...c, password: e.target.value })} minLength={10} autoComplete="new-password" required /></label>}
+        <p className="muted small">If the email already has an account, it keeps its password and is simply made owner of this campaign.</p>
+        <button className="btn primary" style={{ alignSelf: 'flex-start' }}>Create campaign</button>
+      </form>
+
+      <h2>Campaigns</h2>
+      <table className="table compact" style={{ marginBottom: 24 }}>
+        <thead><tr><th>Campaign</th><th>Seat</th><th>Election</th><th>Owner</th><th>Package</th></tr></thead>
+        <tbody>{(camps ?? []).map((x) => (
+          <tr key={x.id}>
+            <td>{x.campaignName}</td><td>{x.seatCode}</td><td>{x.electionDate}</td>
+            <td>{x.owner ? `${x.owner.name ?? ''} ${x.owner.email ?? ''}`.trim() : '–'}</td>
+            <td>{x.plan ? `${x.plan.name} (${x.plan.status})` : <span className="muted small">none</span>}</td>
+          </tr>
+        ))}</tbody>
+      </table>
+      {camps && !camps.length && <p className="muted">No campaigns yet.</p>}
 
       <form className="inline-form" onSubmit={(e) => { e.preventDefault(); load(); }} style={{ marginBottom: 12 }}>
         <label>Find<input value={q} onChange={(e) => setQ(e.target.value)} placeholder="name or email" /></label>

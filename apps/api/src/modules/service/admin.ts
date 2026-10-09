@@ -7,6 +7,7 @@ import { HttpError, ah } from '../../lib/http.js';
 import { requireUser } from '../../middleware/auth.js';
 import { now } from '../../lib/util.js';
 import { meterUsage } from '../billing/metering.js';
+import { assignPlan, assignPlanSchema } from '../billing/assign.js';
 import { billedUnits, buildPlanInvoice } from '../billing/invoice.js';
 import type { Deps } from '../../types.js';
 
@@ -131,26 +132,8 @@ export function serviceAdminRoutes(deps: Deps) {
   /** Puts a campaign on a package. The package's terms are copied onto the campaign's subscription. */
   r.put('/tenants/:tenantId/plan', ah(async (req, res) => {
     const tenantId = uuid.parse(req.params.tenantId);
-    const b = z.object({
-      planCode: z.string(), startedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), taxPercent: z.number().min(0).max(100).nullable().default(null),
-      discountPercent: z.number().min(0).max(100).nullable().default(null), status: z.enum(['trial', 'active', 'past_due', 'cancelled']).default('active'),
-    }).strict().parse(req.body);
-    const row = await withTenant(pool, tenantId, async (db) => {
-      const [t] = await db.select().from(schema.tenants).where(eq(schema.tenants.id, tenantId));
-      if (!t) throw new HttpError(404, 'TENANT_NOT_FOUND');
-      const [p] = await db.select().from(schema.plans).where(eq(schema.plans.code, b.planCode));
-      if (!p || !p.active) throw new HttpError(404, 'PLAN_NOT_FOUND');
-      if (p.region !== t.region) throw new HttpError(422, 'PLAN_REGION_MISMATCH', `This package is for ${p.region} campaigns.`);
-      const v = {
-        plan: p.name, priceMinor: p.priceMinor, smsRateMinor: p.overageMinor.smsSent ?? 0, smsIncluded: p.included.smsSent ?? 0, taxPercent: b.taxPercent == null ? null : String(b.taxPercent),
-        status: b.status, startedOn: b.startedOn, planCode: p.code, billing: p.billing, terms: { included: p.included, overageMinor: p.overageMinor, hardLimits: p.hardLimits },
-        discountPercent: b.discountPercent == null ? null : String(b.discountPercent), updatedAt: now(deps),
-      };
-      const [s] = await db.insert(schema.subscriptions).values({ tenantId, ...v }).onConflictDoUpdate({ target: schema.subscriptions.tenantId, set: v }).returning();
-      await db.insert(schema.auditLog).values({ tenantId, actorId: req.user!.id, action: 'assign_plan', entity: 'subscription', entityId: tenantId, after: { planCode: p.code, startedOn: b.startedOn, discountPercent: b.discountPercent }, ip: req.ip });
-      return s!;
-    });
-    res.json(row);
+    const b = assignPlanSchema.strict().parse(req.body);
+    res.json(await withTenant(pool, tenantId, (db) => assignPlan(db, tenantId, req.user!.id, b, now(deps), req.ip)));
   }));
 
   /** Issues the invoice for a month for every active subscription. Safe to run twice: a month already invoiced is skipped. */

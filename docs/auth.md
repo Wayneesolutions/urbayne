@@ -48,3 +48,13 @@ Accounts that only had a phone number cannot sign in any more. A super admin cre
 - Sign-in with Google or other providers.
 - Self-service sign-up (accounts are created by a super admin, or by an owner adding a team member).
 - Password history (reusing an old password) and expiry.
+
+## Creating a campaign for a candidate (super admin)
+
+The super admin page has a "Create a campaign for a candidate" form (`POST /api/superadmin/campaigns`). In one step it:
+
+1. finds or creates the candidate's account from their email (a new account gets a generated or typed temporary password, or an emailed link to choose one; an existing account keeps its password),
+2. creates the campaign and makes the candidate its owner,
+3. optionally applies a package (the package's terms are copied onto the campaign's subscription).
+
+Everything that can be checked up front (seat free, package exists and matches the country, password strength) is checked before the account is created; if creating the campaign still fails, a newly made account is removed again. `GET /api/superadmin/campaigns` lists every campaign with its owner and package (migration `0021_admin_campaigns.sql`).

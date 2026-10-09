@@ -1,66 +1,21 @@
 import { Router } from 'express';
-import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { schema, withTenant } from '@cs/db';
-import { getProvince, getRegion } from '@cs/regions';
 import { HttpError, ah } from '../lib/http.js';
+import { MODULES, createCampaign, createCampaignSchema } from '../lib/tenants.js';
 import { loadTenant, requireRole } from '../middleware/auth.js';
 import type { Deps } from '../types.js';
 
-export const MODULES = ['hub', 'assistant', 'calls', 'field', 'ops', 'finance', 'results', 'service'] as const;
-
-const createSchema = z.object({
-  raceType: z.enum(['assembly', 'parliament', 'municipal', 'ward', 'trustee', 'panchayat', 'other']),
-  seatCode: z.string().min(1).max(64),
-  electionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  campaignName: z.string().min(2).max(120),
-  timeZone: z.string().optional(),
-  pollCloseAt: z.string().datetime({ offset: true }).optional(),
-  enabledModules: z.array(z.enum(MODULES)).default([]),
-  /** 'office' = a sitting representative's service office (no election-date deletion; ticket retention instead). */
-  kind: z.enum(['campaign', 'office']).default('campaign'),
-  /** Canadian province whose rules apply (for example MB). Only for Canadian deployments. */
-  province: z.string().regex(/^[A-Z]{2}$/).optional(),
-});
+export { MODULES } from '../lib/tenants.js';
 
 export function tenantRoutes(deps: Deps) {
   const r = Router();
   const { env, pool } = deps;
 
   r.post('/', ah(async (req, res) => {
-    const b = createSchema.parse(req.body);
-    const region = getRegion(env.DEPLOY_REGION);
-    if (b.province && !getProvince(region.code, b.province)) throw new HttpError(422, 'PROVINCE_NOT_SUPPORTED', `Provincial rules for ${b.province} are not set up on this deployment.`);
-    const id = randomUUID();
-    try {
-      const tenant = await withTenant(pool, id, async (db) => {
-        const [t] = await db.insert(schema.tenants).values({
-          id,
-          region: region.code,
-          raceType: b.raceType,
-          seatCode: b.seatCode.trim().toUpperCase(),
-          electionDate: b.electionDate,
-          campaignName: b.campaignName,
-          timeZone: b.timeZone ?? region.defaultTimeZone,
-          pollCloseAt: b.pollCloseAt ? new Date(b.pollCloseAt) : null,
-          enabledModules: b.enabledModules,
-          kind: b.kind,
-          province: b.province ?? null,
-        }).returning();
-        await db.insert(schema.memberships).values({ tenantId: id, userId: req.user!.id, role: 'owner' });
-        await db.insert(schema.auditLog).values({ tenantId: id, actorId: req.user!.id, action: 'create', entity: 'tenant', entityId: id, after: t, ip: req.ip });
-        return t;
-      });
-      res.status(201).json(tenant);
-    } catch (e: any) {
-      // drizzle wraps the database error: the Postgres error (code, constraint) is on .cause
-      const pgErr = e?.cause ?? e;
-      if (pgErr?.code === '23505' && String(pgErr?.constraint ?? pgErr?.message).includes('one_race_one_client')) {
-        throw new HttpError(409, 'ONE_RACE_ONE_CLIENT', 'This seat already has an active campaign on the platform.');
-      }
-      throw e;
-    }
+    const b = createCampaignSchema.parse(req.body);
+    res.status(201).json(await createCampaign(deps, req.user!.id, b, req.ip));
   }));
 
   r.get('/:tenantId', loadTenant(deps), (req, res) => res.json({ tenant: req.tenant, role: req.role }));

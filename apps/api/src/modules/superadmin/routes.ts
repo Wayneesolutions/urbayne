@@ -5,6 +5,10 @@ import { and, desc, eq, ilike, isNull, or, sql } from 'drizzle-orm';
 import { schema, withTenant } from '@cs/db';
 import { HttpError, ah } from '../../lib/http.js';
 import { generatePassword, hashPassword, normaliseEmail, passwordProblem } from '../../lib/password.js';
+import { findOrCreateAccount } from '../../lib/accounts.js';
+import { checkCampaign, createCampaign, createCampaignSchema } from '../../lib/tenants.js';
+import { assignPlan, assignPlanSchema, findPlanFor } from '../billing/assign.js';
+import { now } from '../../lib/util.js';
 import { requireUser } from '../../middleware/auth.js';
 import { sendResetLink } from '../../routes/auth.js';
 import { mailEnabled } from '../../lib/mailer.js';
@@ -123,6 +127,58 @@ export function superAdminRoutes(deps: Deps) {
     try { await sendResetLink(deps, u); } catch { throw new HttpError(502, 'EMAIL_NOT_SENT', 'The email could not be sent. Check the mail settings.'); }
     await withTenant(pool, null, (db) => audit(db, req, 'send_reset_link', id));
     res.json({ ok: true });
+  }));
+
+  // ----- campaigns: create one for a candidate, with their account and package, in one step -----
+  r.get('/campaigns', ah(async (_req, res) => {
+    const { rows } = await pool.query('SELECT * FROM admin_campaigns()');
+    res.json(rows.map((c: any) => ({
+      id: c.id, campaignName: c.campaign_name, candidateName: c.candidate_name, region: c.region, kind: c.kind, seatCode: c.seat_code, electionDate: c.election_date instanceof Date ? c.election_date.toLocaleDateString('en-CA') : String(c.election_date).slice(0, 10),
+      status: c.status, isDemo: c.is_demo, createdAt: c.created_at, owner: c.owner_email ? { id: c.owner_id, email: c.owner_email, name: c.owner_name } : null, plan: c.plan_name ? { name: c.plan_name, status: c.plan_status } : null,
+    })));
+  }));
+
+  /**
+   * Creates a campaign for a candidate: finds or creates their account (given a password to hand over, or an emailed link), makes them the
+   * owner, and puts the campaign on a package. The candidate then signs in and sees their campaign.
+   */
+  r.post('/campaigns', ah(async (req, res) => {
+    const b = createCampaignSchema.extend({
+      owner: z.object({ email: z.string().email().max(254), name: z.string().min(1).max(120).optional(), password: z.string().max(256).optional(), sendInvite: z.boolean().default(false) }).strict(),
+      candidateName: z.string().max(120).optional(),
+      plan: assignPlanSchema.partial({ startedOn: true, taxPercent: true, discountPercent: true, status: true }).optional(),
+    }).strict().parse(req.body);
+    const region = checkCampaign(deps, b);
+    if (b.owner.sendInvite && b.owner.password) throw new HttpError(400, 'PASSWORD_OR_INVITE', 'Either give a password or send an invite link, not both.');
+    if (b.owner.sendInvite && !mailEnabled(deps.env)) throw new HttpError(409, 'EMAIL_NOT_CONFIGURED', 'Email is not set up on this server (SMTP_URL). Give a password instead.');
+    // Everything that can be refused is checked before anything is created.
+    if (b.plan) await withTenant(pool, null, (db) => findPlanFor(db, b.plan!.planCode, region.code));
+    const temporary = b.owner.sendInvite ? undefined : (b.owner.password ?? generatePassword());
+
+    const acct = await withTenant(pool, null, async (db) => {
+      const a = await findOrCreateAccount(deps, db, { email: b.owner.email, name: b.owner.name, password: temporary });
+      if (a.user.disabledAt) throw new HttpError(409, 'ACCOUNT_DISABLED', 'This account is disabled. Enable it first.');
+      return a;
+    });
+    let tenant;
+    try { tenant = await createCampaign(deps, acct.user.id, b, req.ip); }
+    catch (e) {
+      // A seat that is taken must not leave a stray new account behind.
+      if (acct.created) await withTenant(pool, null, (db) => db.delete(schema.users).where(eq(schema.users.id, acct.user.id))).catch(() => {});
+      throw e;
+    }
+    await withTenant(pool, tenant.id, async (db) => {
+      if (b.candidateName) await db.update(schema.tenants).set({ candidateName: b.candidateName }).where(eq(schema.tenants.id, tenant.id));
+      if (b.plan) await assignPlan(db, tenant.id, req.user!.id, { startedOn: now(deps).toISOString().slice(0, 10), taxPercent: null, discountPercent: null, status: 'active', ...b.plan }, now(deps), req.ip);
+      await db.insert(schema.auditLog).values({ tenantId: tenant.id, actorId: req.user!.id, action: 'superadmin_create_campaign', entity: 'tenant', entityId: tenant.id, after: { owner: acct.user.email, plan: b.plan?.planCode ?? null, newAccount: acct.created }, ip: req.ip });
+    });
+    let invited: boolean | undefined;
+    if (acct.invite) { try { await sendResetLink(deps, acct.user, 'invite'); invited = true; } catch (e) { invited = false; deps.log.error({ err: e }, 'could not send the invite email'); } }
+    res.status(201).json({
+      campaign: { id: tenant.id, campaignName: tenant.campaignName, seatCode: tenant.seatCode, region: tenant.region, electionDate: tenant.electionDate },
+      owner: { id: acct.user.id, email: acct.user.email, newAccount: acct.created, ...(acct.created && temporary ? { temporaryPassword: temporary } : {}), ...(invited !== undefined ? { invited } : {}) },
+      plan: b.plan?.planCode ?? null,
+    });
   }));
 
   return r;
