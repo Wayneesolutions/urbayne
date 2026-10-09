@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, errText, session } from '../api';
+import { PasswordInput } from '../PasswordInput';
 
 /** "Forgot password": asks for the email and says the same thing whether or not it has an account. */
 export function ForgotPassword() {
@@ -59,8 +60,8 @@ export function ResetPassword() {
           <><p>Your password is changed. You were signed out on all devices.</p><Link className="btn primary" to="/login">Sign in</Link></>
         ) : (
           <form onSubmit={submit} className="stack">
-            <label>New password<input type="password" autoComplete="new-password" minLength={10} value={pw} onChange={(e) => setPw(e.target.value)} autoFocus required /></label>
-            <label>Type it again<input type="password" autoComplete="new-password" minLength={10} value={pw2} onChange={(e) => setPw2(e.target.value)} required /></label>
+            <label>New password<PasswordInput autoComplete="new-password" minLength={10} value={pw} onChange={(e) => setPw(e.target.value)} autoFocus required /></label>
+            <label>Type it again<PasswordInput autoComplete="new-password" minLength={10} value={pw2} onChange={(e) => setPw2(e.target.value)} required /></label>
             <p className="muted small">At least 10 characters. A few ordinary words together is a good password.</p>
             <button className="btn primary">Save password</button>
             {err && <p className="err" role="alert">{err}</p>}
@@ -99,9 +100,9 @@ export function ChangePassword() {
         {forced && <p className="muted">Your password was set by someone else. Choose one only you know before you continue.</p>}
         {ok && !forced ? <><p role="status">Password changed. You were signed out on your other devices.</p><Link className="btn" to="/">Back</Link></> : (
           <form onSubmit={submit} className="stack">
-            {!forced && <label>Current password<input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required /></label>}
-            <label>New password<input type="password" autoComplete="new-password" minLength={10} value={pw} onChange={(e) => setPw(e.target.value)} autoFocus required /></label>
-            <label>Type it again<input type="password" autoComplete="new-password" minLength={10} value={pw2} onChange={(e) => setPw2(e.target.value)} required /></label>
+            {!forced && <label>Current password<PasswordInput autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required /></label>}
+            <label>New password<PasswordInput autoComplete="new-password" minLength={10} value={pw} onChange={(e) => setPw(e.target.value)} autoFocus required /></label>
+            <label>Type it again<PasswordInput autoComplete="new-password" minLength={10} value={pw2} onChange={(e) => setPw2(e.target.value)} required /></label>
             <p className="muted small">At least 10 characters. A few ordinary words together is a good password.</p>
             <button className="btn primary">Save password</button>
             {!forced && <Link to="/" className="small">Cancel</Link>}

@@ -184,6 +184,20 @@
   }
   function toast(msg) { const d = $(`<div class="toast" role="status">${esc(msg)}</div>`); document.body.append(d); setTimeout(() => d.remove(), 1600); }
 
+  /** An eye button on each password box, to show or hide what was typed. */
+  function addEyes(root) {
+    const open = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+    const shut = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.9 10.9 0 0 1 12 20c-7 0-11-8-11-8a19.8 19.8 0 0 1 5.06-5.94M9.9 4.24A10.9 10.9 0 0 1 12 4c7 0 11 8 11 8a19.7 19.7 0 0 1-3.17 4.19M14.12 14.12A3 3 0 1 1 9.88 9.88"/><path d="m1 1 22 22"/></svg>';
+    root.querySelectorAll('input[type=password]').forEach((inp) => {
+      const wrap = document.createElement('span'); wrap.className = 'pw';
+      inp.replaceWith(wrap); wrap.append(inp);
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'pw-eye'; b.innerHTML = open;
+      b.setAttribute('aria-label', t('showPw')); b.setAttribute('aria-pressed', 'false');
+      b.onclick = () => { const on = inp.type === 'password'; inp.type = on ? 'text' : 'password'; b.innerHTML = on ? shut : open; b.setAttribute('aria-pressed', String(on)); b.setAttribute('aria-label', t(on ? 'hidePw' : 'showPw')); };
+      wrap.append(b);
+    });
+  }
+
   function loginView() {
     const m = document.createElement('main');
     m.append(langs());
@@ -192,6 +206,7 @@
       ? `<p>${esc(t('chooseNew'))}</p><label>${esc(t('newPassword'))}<input type="password" autocomplete="new-password" minlength="10" required></label><button class="primary">${esc(t('signIn'))}</button>`
       : `<label>${esc(t('email'))}<input type="email" autocomplete="username" value="${esc(S.email)}" required></label><label>${esc(t('password'))}<input type="password" autocomplete="current-password" required></label><button class="primary">${esc(t('signIn'))}</button>`}
       ${S.err ? `<p class="err">${esc(S.err)}</p>` : ''}</form>`);
+    addEyes(c);
     c.onsubmit = async (e) => {
       e.preventDefault(); S.err = '';
       const inputs = c.querySelectorAll('input');

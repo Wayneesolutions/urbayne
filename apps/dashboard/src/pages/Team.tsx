@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { api, authConfig, errText } from '../api';
+import { PasswordInput } from '../PasswordInput';
 import type { ShellCtx } from '../App';
 
 const ROLE: Record<string, string> = { owner: 'Candidate', manager: 'Campaign manager', finance_agent: 'Finance / election agent', coordinator: 'Coordinator', field_worker: 'Booth worker / canvasser', agent_reporter: 'Polling agent', service_staff: 'Office staff' };
@@ -36,7 +37,7 @@ export function Team() {
           <label>Role<select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>{allowed.map((r) => <option key={r} value={r}>{ROLE[r]}</option>)}</select></label>
           <label>Password<select value={form.how} onChange={(e) => setForm({ ...form, how: e.target.value as any })}>{mail && <option value="invite">Email them a link to choose</option>}<option value="set">I will type one</option></select></label>
         </div>
-        {form.how === 'set' && <label>Password (at least 10 characters)<input type="text" minLength={10} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required /></label>}
+        {form.how === 'set' && <label>Password (at least 10 characters)<PasswordInput minLength={10} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} autoComplete="new-password" required /></label>}
         {form.role === 'agent_reporter' && <label>Mobile (only if they report results by text message)<input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+91…" /></label>}
         <button className="btn primary" style={{ alignSelf: 'flex-start' }}>Add to team</button>
         {msg && <p className={msg.ok ? 'muted' : 'err'} role="status">{msg.text}</p>}
