@@ -6,6 +6,7 @@ import { signAccess, signRefresh, verifyRefresh } from '../lib/jwt.js';
 import { HttpError, ah } from '../lib/http.js';
 import { requireUser } from '../middleware/auth.js';
 import { rateLimit } from '../lib/rate-limit.js';
+import { mailEnabled } from '../lib/mailer.js';
 import { hashPassword, hashToken, newToken, normaliseEmail, passwordProblem, verifyPassword } from '../lib/password.js';
 import type { Deps } from '../types.js';
 
@@ -54,6 +55,9 @@ export function authRoutes(deps: Deps) {
   const { env, pool, log } = deps;
   const byEmail = (email: string) => withTenant(pool, null, async (db) => (await db.select().from(schema.users).where(eq(schema.users.email, email)))[0] ?? null);
 
+  /** What the sign-in page needs to know: whether it should offer "forgot password". */
+  r.get('/config', (_req, res) => res.json({ passwordReset: mailEnabled(env) }));
+
   r.post('/login', rateLimit(deps.rateStore, env.LOGIN_MAX_PER_IP, 10 * 60_000), ah(async (req, res) => {
     const b = z.object({ email: z.string().max(254), password: z.string().min(1).max(256) }).strict().parse(req.body);
     const email = normaliseEmail(b.email);
@@ -68,6 +72,7 @@ export function authRoutes(deps: Deps) {
 
   /** Always answers the same, so it cannot be used to find out which emails have accounts. */
   r.post('/forgot', rateLimit(deps.rateStore, Math.floor(env.LOGIN_MAX_PER_IP / 3), 60 * 60_000), ah(async (req, res) => {
+    if (!mailEnabled(env)) throw new HttpError(503, 'RESET_BY_EMAIL_OFF', 'Password reset by email is not set up. Ask your administrator to reset your password.');
     const b = z.object({ email: z.string().max(254) }).strict().parse(req.body);
     const email = normaliseEmail(b.email);
     let devToken: string | null = null;

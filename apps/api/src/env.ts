@@ -64,7 +64,8 @@ const schema = z.object({
   // Log level: fatal | error | warn | info | debug | trace | silent. Tests default to silent.
   LOG_LEVEL: z.string().optional(),
   NODE_ENV: z.string().default('development'),
-  // Email for password reset links. Without SMTP_URL (development only) the message and its link are written to the log.
+  // Email for password reset links and invites. Optional: without SMTP_URL, "forgot password" and email invites are switched off in
+  // production (a super admin resets passwords by hand); in development the message and its link are written to the log.
   SMTP_URL: z.string().url().optional(),
   // Sign-in attempts allowed per IP address per 10 minutes (each account is also limited separately).
   LOGIN_MAX_PER_IP: z.coerce.number().int().min(5).default(30),
@@ -78,8 +79,6 @@ const schema = z.object({
   message: 'REDIS_URL is required in production (rate limits, sessions and call queues must be shared between servers)',
 }).refine((e) => !(e.NODE_ENV === 'production' && e.DEV_RETURN_RESET_TOKEN === 'true'), {
   message: 'DEV_RETURN_RESET_TOKEN must never be enabled in production',
-}).refine((e) => !(e.NODE_ENV === 'production' && !e.SMTP_URL), {
-  message: 'SMTP_URL is required in production (password reset emails must really be sent)',
 }).refine((e) => !(e.NODE_ENV === 'production' && !e.EVIDENCE_SIGNING_KEY), {
   message: 'EVIDENCE_SIGNING_KEY is required in production',
 }).refine((e) => !(e.NODE_ENV === 'production' && e.STORAGE_DRIVER !== 's3'), {

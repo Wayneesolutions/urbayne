@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, errText, session } from '../api';
+import { api, authConfig, errText, session } from '../api';
 
 type Type = 'super_admin' | 'admin' | 'user';
 const TYPE_LABEL: Record<Type, string> = { super_admin: 'Super admin', admin: 'Admin (platform staff)', user: 'User (candidate or team member)' };
@@ -13,6 +13,8 @@ export function SuperAdmin() {
   const [q, setQ] = useState('');
   const [f, setF] = useState(blank);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [mail, setMail] = useState(true);
+  useEffect(() => { authConfig().then((c) => setMail(c.passwordReset)); }, []);
   const [secret, setSecret] = useState<{ who: string; password: string } | null>(null);
   const load = (query = q) => api(`/superadmin/users${query ? `?q=${encodeURIComponent(query)}` : ''}`).then(setUsers).catch((x) => { if (x?.status === 403) nav('/'); else setMsg({ ok: false, text: errText(x) }); });
   useEffect(() => { load(''); }, []);
@@ -65,7 +67,7 @@ export function SuperAdmin() {
           <label>Email<input type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} required /></label>
           <label>This person is<select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value as Type })}>{(Object.keys(TYPE_LABEL) as Type[]).map((t) => <option key={t} value={t}>{TYPE_LABEL[t]}</option>)}</select></label>
           <label>Password<select value={f.how} onChange={(e) => setF({ ...f, how: e.target.value as any })}>
-            <option value="generate">Generate one for me</option><option value="set">I will type one</option><option value="invite">Email them a link to choose</option></select></label>
+            <option value="generate">Generate one for me</option><option value="set">I will type one</option>{mail && <option value="invite">Email them a link to choose</option>}</select></label>
         </div>
         {f.how === 'set' && <label>Password (at least 10 characters)<input type="text" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} minLength={10} required /></label>}
         <p className="muted small">A super admin can manage accounts. An admin is platform staff (packages, billing, support). A user has no platform powers: a candidate creates their campaign after signing in, and team members are added by the campaign owner.</p>
@@ -88,7 +90,7 @@ export function SuperAdmin() {
             <td className="small">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'never'}</td>
             <td className="rowflex">
               <button className="btn small" onClick={() => resetPw(u)} disabled={!u.email}>New password</button>
-              <button className="btn small" onClick={() => act(() => api(`/superadmin/users/${u.id}/send-reset-link`, { body: {} }), () => `Reset link sent to ${u.email}.`)} disabled={!u.email}>Email reset link</button>
+              <button className="btn small" onClick={() => act(() => api(`/superadmin/users/${u.id}/send-reset-link`, { body: {} }), () => `Reset link sent to ${u.email}.`)} disabled={!u.email || !mail} title={mail ? '' : 'Email is not set up on this server'}>Email reset link</button>
               <button className="btn small" onClick={() => act(() => api(`/superadmin/users/${u.id}`, { method: 'PATCH', body: { disabled: !u.disabled } }), () => (u.disabled ? 'Account enabled.' : 'Account disabled and signed out.'))}>{u.disabled ? 'Enable' : 'Disable'}</button>
             </td>
           </tr>

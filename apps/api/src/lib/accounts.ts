@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { schema, withTenant } from '@cs/db';
 import { encrypt, hashPhone, normalisePhone } from './crypto.js';
 import { HttpError } from './http.js';
+import { mailEnabled } from './mailer.js';
 import { generatePassword, hashPassword, normaliseEmail, passwordProblem } from './password.js';
 import type { Deps } from '../types.js';
 
@@ -35,6 +36,7 @@ export async function findOrCreateAccount(deps: Deps, db: Db, input: AccountInpu
     const [taken] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.phoneHash, phoneHash!));
     if (taken) throw new HttpError(409, 'PHONE_IN_USE', 'That phone number belongs to another account.');
   }
+  if (!input.password && !mailEnabled(deps.env)) throw new HttpError(422, 'PASSWORD_REQUIRED', 'Email is not set up on this server, so give this person a password (at least 10 characters).');
   if (input.password) { const p = passwordProblem(input.password, email); if (p) throw new HttpError(422, 'WEAK_PASSWORD', p); }
   const [user] = await db.insert(schema.users).values({
     email, name: input.name ?? null, phoneHash, phoneEnc: phone ? encrypt(phone, deps.env.PHONE_ENC_KEY) : null,

@@ -13,7 +13,7 @@ Everyone signs in with an **email and a password**: the dashboard, the booth wor
 Open `/admin`, sign in as a super admin, and use **Super admin: accounts**. Creating an account has three ways to give the person their password:
 1. **Generate one**: shown once; hand it over privately.
 2. **Type one yourself.**
-3. **Email a link** so they choose their own (needs `SMTP_URL`).
+3. **Email a link** so they choose their own (only if email is set up: `SMTP_URL`).
 
 A password someone else chose (generated, typed, or an admin reset) is **temporary**: the person must choose their own at first sign-in, and nothing else works until they do.
 
@@ -33,7 +33,7 @@ On the sign-in page, **Forgot your password?** asks for the email and sends a li
 
 | Setting | Meaning |
 | --- | --- |
-| `SMTP_URL`, `MAIL_FROM` | Where password emails go and who they come from. `SMTP_URL` is **required in production**. Without it (development), emails are written to the API log. |
+| `SMTP_URL`, `MAIL_FROM` | Where password emails go and who they come from. **Optional.** Without `SMTP_URL` in production, "Forgot password" and email invites are switched off (the sign-in page says to ask an administrator; a super admin resets passwords with "New password"; team members must be given a password when added). In development the emails are written to the API log instead. |
 | `SUPERADMIN_EMAIL`, `SUPERADMIN_PASSWORD` | Creates the first super admin at startup while none exists. Remove the password after the first sign-in. |
 | `DEV_RETURN_RESET_TOKEN` | Demo servers only: the forgot-password answer includes the token. Refused in production. |
 | `LOGIN_MAX_PER_IP` | Sign-in attempts per IP address per 10 minutes. |

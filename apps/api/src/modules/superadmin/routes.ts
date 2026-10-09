@@ -7,6 +7,7 @@ import { HttpError, ah } from '../../lib/http.js';
 import { generatePassword, hashPassword, normaliseEmail, passwordProblem } from '../../lib/password.js';
 import { requireUser } from '../../middleware/auth.js';
 import { sendResetLink } from '../../routes/auth.js';
+import { mailEnabled } from '../../lib/mailer.js';
 import type { Deps } from '../../types.js';
 
 type Db = Parameters<Parameters<typeof withTenant>[2]>[0];
@@ -67,6 +68,7 @@ export function superAdminRoutes(deps: Deps) {
       sendInvite: z.boolean().default(false),
     }).strict().parse(req.body);
     const email = normaliseEmail(b.email);
+    if (b.sendInvite && !mailEnabled(deps.env)) throw new HttpError(409, 'EMAIL_NOT_CONFIGURED', 'Email is not set up on this server (SMTP_URL). Give a password instead.');
     if (b.sendInvite && b.password) throw new HttpError(400, 'PASSWORD_OR_INVITE', 'Either give a password or send an invite link, not both.');
     if (b.password) { const p = passwordProblem(b.password, email); if (p) throw new HttpError(422, 'WEAK_PASSWORD', p); }
     const temporary = b.password ?? generatePassword();
@@ -133,6 +135,7 @@ export function superAdminRoutes(deps: Deps) {
     const id = uuid.parse(req.params.id);
     const u = await withTenant(pool, null, async (db) => (await db.select().from(schema.users).where(eq(schema.users.id, id)))[0]);
     if (!u) throw new HttpError(404, 'NOT_FOUND');
+    if (!mailEnabled(deps.env)) throw new HttpError(409, 'EMAIL_NOT_CONFIGURED', 'Email is not set up on this server (SMTP_URL). Use "New password" instead.');
     if (!u.email) throw new HttpError(409, 'NO_EMAIL', 'This account has no email address.');
     try { await sendResetLink(deps, u); } catch { throw new HttpError(502, 'EMAIL_NOT_SENT', 'The email could not be sent. Check the mail settings.'); }
     await withTenant(pool, null, (db) => audit(db, req, 'send_reset_link', id));

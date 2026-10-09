@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { api, errText } from '../api';
+import { api, authConfig, errText } from '../api';
 import type { ShellCtx } from '../App';
 
 const ROLE: Record<string, string> = { owner: 'Candidate', manager: 'Campaign manager', finance_agent: 'Finance / election agent', coordinator: 'Coordinator', field_worker: 'Booth worker / canvasser', agent_reporter: 'Polling agent', service_staff: 'Office staff' };
@@ -11,6 +11,8 @@ export function Team() {
   const [members, setMembers] = useState<any[]>([]);
   const [form, setForm] = useState(blank);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [mail, setMail] = useState(true);
+  useEffect(() => { authConfig().then((c) => { setMail(c.passwordReset); if (!c.passwordReset) setForm((f) => ({ ...f, how: 'set' })); }); }, []);
   const load = () => api(`/t/${t.id}/members`).then(setMembers);
   useEffect(() => { load(); }, [t.id]);
   const allowed = role === 'owner' ? ['manager', 'finance_agent', 'coordinator', 'field_worker', 'agent_reporter', 'service_staff'] : ['field_worker', 'agent_reporter'];
@@ -21,7 +23,7 @@ export function Team() {
         email: form.email, role: form.role, ...(form.name && { name: form.name }), ...(form.phone && { phone: form.phone }), ...(form.how === 'set' ? { password: form.password } : {}),
       } });
       setMsg({ ok: true, text: r.invited === false ? 'Added, but the invite email could not be sent. Ask your platform contact to check the mail settings.' : r.invited ? `Added. We emailed ${r.email} a link to choose a password.` : `Added. Give ${r.email} the password you typed: they must change it at first sign-in.` });
-      setForm(blank); load();
+      setForm({ ...blank, how: mail ? 'invite' : 'set' }); load();
     } catch (x) { setMsg({ ok: false, text: errText(x, 'Could not add.') }); }
   }
   return (
@@ -32,7 +34,7 @@ export function Team() {
           <label>Email<input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required /></label>
           <label>Name<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
           <label>Role<select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>{allowed.map((r) => <option key={r} value={r}>{ROLE[r]}</option>)}</select></label>
-          <label>Password<select value={form.how} onChange={(e) => setForm({ ...form, how: e.target.value as any })}><option value="invite">Email them a link to choose</option><option value="set">I will type one</option></select></label>
+          <label>Password<select value={form.how} onChange={(e) => setForm({ ...form, how: e.target.value as any })}>{mail && <option value="invite">Email them a link to choose</option>}<option value="set">I will type one</option></select></label>
         </div>
         {form.how === 'set' && <label>Password (at least 10 characters)<input type="text" minLength={10} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required /></label>}
         {form.role === 'agent_reporter' && <label>Mobile (only if they report results by text message)<input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+91…" /></label>}

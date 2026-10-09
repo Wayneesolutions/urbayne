@@ -128,12 +128,8 @@ variable "app_env" {
 }
 
 variable "provider_secrets" {
-  description = "Secret settings for the providers of this region: VAPI_API_KEY, VAPI_PHONE_NUMBER_ID, VAPI_ASSISTANT_ID, VAPI_WEBHOOK_SECRET, TWILIO_*, DLT_AUTH_KEY, SMTP_URL (required: password reset email), SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD (first super admin, optional), SENTRY_DSN, ANTHROPIC_API_KEY. Stored in Secrets Manager (and, encrypted, in the Terraform state: keep the state private)."
+  description = "Secret settings for the providers of this region: VAPI_API_KEY, VAPI_PHONE_NUMBER_ID, VAPI_ASSISTANT_ID, VAPI_WEBHOOK_SECRET, TWILIO_*, DLT_AUTH_KEY, SMTP_URL (optional: password reset and invite emails; without it a super admin resets passwords by hand), SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD (first super admin, optional), SENTRY_DSN, ANTHROPIC_API_KEY. Stored in Secrets Manager (and, encrypted, in the Terraform state: keep the state private)."
   type        = map(string)
   default     = {}
   sensitive   = true
-  validation {
-    condition     = contains(nonsensitive(keys(var.provider_secrets)), "SMTP_URL")
-    error_message = "provider_secrets must include SMTP_URL: people sign in with email and passwords, and reset links are sent by email."
-  }
 }

@@ -44,11 +44,10 @@ describe('password rules', () => {
 
 describe('settings', () => {
   const base = { APP_DATABASE_URL: 'postgres://x:y@localhost/db', JWT_SECRET: 'x'.repeat(20), JWT_REFRESH_SECRET: 'y'.repeat(20), DEPLOY_REGION: 'IN', PHONE_ENC_KEY: 'a'.repeat(44), PHONE_HASH_KEY: 'b'.repeat(44) };
-  it('production must send real email, and must not hand out reset tokens', () => {
+  it('production may run without email, but must never hand out reset tokens', () => {
     const prod = { ...base, NODE_ENV: 'production', REDIS_URL: 'redis://x', EVIDENCE_SIGNING_KEY: 'k'.repeat(32), STORAGE_DRIVER: 's3', FILES_BUCKET: 'files' };
-    expect(() => loadEnv(prod as any)).toThrow(/SMTP_URL/);
+    expect(loadEnv(prod as any).SMTP_URL).toBeUndefined();
     expect(() => loadEnv({ ...prod, SMTP_URL: 'smtp://m:25', DEV_RETURN_RESET_TOKEN: 'true' } as any)).toThrow(/DEV_RETURN_RESET_TOKEN/);
-    expect(loadEnv({ ...prod, SMTP_URL: 'smtp://m:25' } as any).SMTP_URL).toBe('smtp://m:25');
   });
 });
 
@@ -255,6 +254,39 @@ run('Email login, password reset and the super admin portal (integration)', () =
     it('everything done here is in the audit log', async () => {
       const actions = (await q("SELECT DISTINCT action FROM audit_log WHERE entity = 'user'")).map((r) => r.action);
       expect(actions).toEqual(expect.arrayContaining(['create_account', 'update_account', 'admin_reset_password', 'send_reset_link', 'password_reset', 'password_change']));
+    });
+  });
+
+  describe('a production server with no email set up', () => {
+    let prod: ReturnType<typeof createApp>, t = '';
+    beforeAll(async () => {
+      await owner.query('TRUNCATE audit_log, password_resets, memberships, tenants, users CASCADE');
+      await owner.query("INSERT INTO users (email, password_hash, name, is_super_admin, is_wes_admin) VALUES ('boss@test.local', $1, 'Boss', true, true)", [await hashPassword('Boss-long-passphrase-1')]);
+      prod = createApp({ env: testEnv({ NODE_ENV: 'production', DEV_RETURN_RESET_TOKEN: 'false', REDIS_URL: 'redis://localhost:6379', EVIDENCE_SIGNING_KEY: 'k'.repeat(32), STORAGE_DRIVER: 's3', FILES_BUCKET: 'test-files' }), pool, mailer, rateStore: new MemoryRateStore() });
+      t = (await request(prod).post('/api/auth/login').send({ email: 'boss@test.local', password: 'Boss-long-passphrase-1' }).expect(200)).body.accessToken;
+    });
+    it('switches "forgot password" off, and says so plainly', async () => {
+      expect((await request(prod).get('/api/auth/config').expect(200)).body).toEqual({ passwordReset: false });
+      const r = await request(prod).post('/api/auth/forgot').send({ email: 'boss@test.local' }).expect(503);
+      expect(r.body.error).toBe('RESET_BY_EMAIL_OFF');
+      expect((await request(app).get('/api/auth/config').expect(200)).body).toEqual({ passwordReset: true }); // development servers log the email instead
+    });
+    it('a super admin still creates accounts and resets passwords by hand', async () => {
+      const made = (await request(prod).post('/api/superadmin/users').set(bearer(t)).send({ name: 'Hand', email: 'hand@test.local' }).expect(201)).body;
+      await login('hand@test.local', made.temporaryPassword).expect(200);
+      const reset = (await request(prod).post(`/api/superadmin/users/${made.id}/reset-password`).set(bearer(t)).send({}).expect(200)).body;
+      expect(reset.temporaryPassword).toHaveLength(16);
+    });
+    it('email-only options are refused instead of failing silently', async () => {
+      expect((await request(prod).post('/api/superadmin/users').set(bearer(t)).send({ name: 'Inv', email: 'inv@test.local', sendInvite: true }).expect(409)).body.error).toBe('EMAIL_NOT_CONFIGURED');
+      const [{ id }] = await q("SELECT id FROM users WHERE email = 'hand@test.local'");
+      expect((await request(prod).post(`/api/superadmin/users/${id}/send-reset-link`).set(bearer(t)).expect(409)).body.error).toBe('EMAIL_NOT_CONFIGURED');
+    });
+    it('a team member must be given a password', async () => {
+      const tenant = (await request(prod).post('/api/tenants').set(bearer(t)).send({ raceType: 'assembly', seatCode: 'NM-1', electionDate: '2027-02-20', campaignName: 'No Mail' }).expect(201)).body.id;
+      const r = await request(prod).post(`/api/t/${tenant}/members`).set(bearer(t)).send({ email: 'w@test.local', role: 'field_worker' }).expect(422);
+      expect(r.body.error).toBe('PASSWORD_REQUIRED');
+      await request(prod).post(`/api/t/${tenant}/members`).set(bearer(t)).send({ email: 'w@test.local', role: 'field_worker', password: 'Worker-given-pass-1' }).expect(201);
     });
   });
 

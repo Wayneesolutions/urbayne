@@ -73,3 +73,7 @@ export async function fetchFile(path: string, save?: string) {
 }
 
 export const errText = (x: unknown, fallback = 'Something went wrong.') => (x instanceof ApiError ? x.message : fallback);
+
+/** Whether this server can email password links (SMTP_URL). When it cannot, the screens leave those options out. */
+let cfg: Promise<{ passwordReset: boolean }> | null = null;
+export const authConfig = () => (cfg ??= fetch('/api/auth/config').then((r) => r.json()).catch(() => ({ passwordReset: true })));

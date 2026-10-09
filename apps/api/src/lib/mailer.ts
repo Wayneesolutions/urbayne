@@ -26,6 +26,9 @@ export class SmtpMailer implements Mailer {
   async send(m: Mail) { await this.t.sendMail({ from: this.from, to: m.to, subject: m.subject, text: m.text }); }
 }
 
+/** Can this deployment really send (or, in development, log) password emails? In production that needs SMTP_URL. */
+export const mailEnabled = (env: Pick<Env, 'SMTP_URL' | 'NODE_ENV'>) => Boolean(env.SMTP_URL) || env.NODE_ENV !== 'production';
+
 export function createMailer(env: Env, log: Logger): Mailer {
   return env.SMTP_URL ? new SmtpMailer(env.SMTP_URL, env.MAIL_FROM) : new LogMailer(log);
 }

@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, ApiError, session } from '../api';
+import { api, ApiError, authConfig, session } from '../api';
 
 export function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [reset, setReset] = useState(true);
+  useEffect(() => { authConfig().then((c) => setReset(c.passwordReset)); }, []);
   const nav = useNavigate();
 
   async function submit(e: React.FormEvent) {
@@ -29,7 +31,7 @@ export function Login() {
           <label>Email<input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus required /></label>
           <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
           <button className="btn primary" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
-          <Link to="/forgot-password" className="small">Forgot your password?</Link>
+          {reset ? <Link to="/forgot-password" className="small">Forgot your password?</Link> : <span className="muted small">Forgot your password? Ask your administrator to reset it.</span>}
         </form>
         {err && <p className="err" role="alert">{err}</p>}
       </div>

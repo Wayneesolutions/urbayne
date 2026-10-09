@@ -37,7 +37,7 @@ pnpm db:migrate
 pnpm dev:api                    # http://localhost:4000/health
 ```
 
-People sign in with an email and a password (see [docs/auth.md](docs/auth.md)). Create the first super admin with `SUPERADMIN_EMAIL` + `SUPERADMIN_PASSWORD` in `.env`, or `pnpm --filter @cs/api create-superadmin you@example.com`. Without `SMTP_URL`, password reset emails are written to the API log.
+People sign in with an email and a password (see [docs/auth.md](docs/auth.md)). Create the first super admin with `SUPERADMIN_EMAIL` + `SUPERADMIN_PASSWORD` in `.env`, or `pnpm --filter @cs/api create-superadmin you@example.com`. `SMTP_URL` is optional: without it, development logs the emails and production switches "forgot password" off.
 
 ## Test
 
