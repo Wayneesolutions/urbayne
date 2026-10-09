@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 /** Normalise to E.164-ish digits with leading +. */
 export function normalisePhone(raw: string): string {
@@ -31,6 +31,3 @@ export function safeEqual(a: string, b: string): boolean {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
-export const newOtp = () => String(randomInt(0, 1_000_000)).padStart(6, '0');
-export const hashOtp = (code: string, key: string) =>
-  createHmac('sha256', Buffer.from(key, 'base64')).update(`otp:${code}`).digest('hex');

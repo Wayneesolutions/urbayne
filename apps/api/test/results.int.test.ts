@@ -9,6 +9,7 @@ import { twilioSignature } from '../src/modules/service/inbound.js';
 import { parseCsv } from '../src/modules/results/routes.js';
 import { deriveUuid } from '../src/modules/results/ingest.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor, emailFor } from './auth-helper.js';
 
 describe('helpers', () => {
   it('derives the same UUID from the same text, so a text delivered twice is one report', () => {
@@ -41,8 +42,8 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
   const q = async (sql: string, args: unknown[] = []) => (await owner.query(sql, args)).rows;
   const res = (path: string) => `/api/t/${tenant}/results${path}`;
   async function login(phone: string) {
-    const r = await request(app).post('/api/auth/otp/request').send({ phone });
-    return (await request(app).post('/api/auth/otp/verify').send({ phone, code: r.body.devCode })).body.accessToken as string;
+    const r = await ensureUser(app, phone);
+    return (await tokenFor(app, phone)).body.accessToken as string;
   }
   const turnout = (who: string, reports: object[], extra: object = {}) => request(app).post(res('/turnout/batch')).set(as(who)).send({ reports, ...extra });
   const tr = (code: string, votesCast: number, time: string, clientUuid = randomUUID()) => ({ clientUuid, areaId: area[code], votesCast, asOf: at(time) });
@@ -57,7 +58,7 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
-    await owner.query('TRUNCATE tenants, users, otp_codes CASCADE');
+    await owner.query('TRUNCATE tenants, users CASCADE');
     pool = new pg.Pool({ connectionString: APP_URL });
     // The clock moves on a second at every call, like real requests do (so "received later" is always a real difference).
     app = createApp(resolveDeps({ env, pool, now: () => (clock = new Date(clock.getTime() + 1000)) }));
@@ -69,7 +70,7 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
       area[code] = (await request(app).post(`/api/t/${tenant}/geo`).set(as('owner')).send({ parentId: root, level: 'booth', nameEn: `Booth ${code}`, code })).body.id;
     }
     for (const [who, phone, role] of [['agent1', '+919800004002', 'agent_reporter'], ['agent2', '+919800004003', 'agent_reporter'], ['counter', '+919800004004', 'agent_reporter'], ['worker', '+919800004005', 'field_worker'], ['coord', '+919800004006', 'coordinator']] as const) {
-      await request(app).post(`/api/t/${tenant}/members`).set(as('owner')).send({ phone, name: who, role }).expect(201);
+      await request(app).post(`/api/t/${tenant}/members`).set(as('owner')).send({ email: emailFor(phone), phone, name: who, role }).expect(201);
       tok[who] = await login(phone);
       id[who] = (jwt.decode(tok[who]!) as { sub: string }).sub;
     }

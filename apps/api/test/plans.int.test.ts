@@ -7,6 +7,7 @@ import { createApp } from '../src/app.js';
 import { buildPlanInvoice, billedUnits, type PlanSub } from '../src/modules/billing/invoice.js';
 import { planLimitReached, usageWindow } from '../src/modules/billing/metering.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor, emailFor } from './auth-helper.js';
 
 const OWNER_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
@@ -58,8 +59,8 @@ run('Packages, metering and invoicing (integration)', () => {
   let tenant = '', legacy = '', caTenant = '';
 
   async function login(a: typeof app, phone: string) {
-    const r = await request(a).post('/api/auth/otp/request').send({ phone });
-    return (await request(a).post('/api/auth/otp/verify').send({ phone, code: r.body.devCode })).body.accessToken as string;
+    const r = await ensureUser(a, phone);
+    return (await tokenFor(a, phone)).body.accessToken as string;
   }
   const plan = {
     name: 'Assembly package', region: 'IN', billing: 'per_campaign', priceMinor: 5_000_000,
@@ -72,7 +73,7 @@ run('Packages, metering and invoicing (integration)', () => {
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
-    await owner.query('TRUNCATE audit_log, invoices, subscriptions, plans, interactions, contacts, memberships, tenants, otp_codes, users CASCADE');
+    await owner.query('TRUNCATE audit_log, invoices, subscriptions, plans, interactions, contacts, memberships, tenants, users CASCADE');
     pool = new pg.Pool({ connectionString: APP_URL });
     app = createApp({ env: testEnv(), pool, now: () => clock });
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -127,9 +128,9 @@ run('Packages, metering and invoicing (integration)', () => {
 
   it('a capped package stops the action, with a plain message', async () => {
     // team: owner + 2 more is the cap of 3
-    await request(app).post(`/api/t/${tenant}/members`).set(as('cand')).send({ phone: '+919800001201', role: 'coordinator' }).expect(201);
-    await request(app).post(`/api/t/${tenant}/members`).set(as('cand')).send({ phone: '+919800001202', role: 'coordinator' }).expect(201);
-    const r = await request(app).post(`/api/t/${tenant}/members`).set(as('cand')).send({ phone: '+919800001203', role: 'coordinator' }).expect(402);
+    await request(app).post(`/api/t/${tenant}/members`).set(as('cand')).send({ email: emailFor('+919800001201'), role: 'coordinator' }).expect(201);
+    await request(app).post(`/api/t/${tenant}/members`).set(as('cand')).send({ email: emailFor('+919800001202'), role: 'coordinator' }).expect(201);
+    const r = await request(app).post(`/api/t/${tenant}/members`).set(as('cand')).send({ email: emailFor('+919800001203'), role: 'coordinator' }).expect(402);
     expect(r.body.error).toBe('PLAN_LIMIT_REACHED');
     expect(r.body.message).toContain('3 team members');
     // contacts: cap of 5

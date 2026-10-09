@@ -244,7 +244,7 @@ function Setup({ tenantId, role }: { tenantId: string; role: string }) {
                 <td><button className="btn small" onClick={() => run(() => api(`/t/${tenantId}/results/agents`, { method: 'PUT', body: { userId: a.user_id, scope: a.scope, ...(a.scope === 'station' ? { areaId: a.area_id } : {}), remove: true } }), 'Removed.')}>Remove</button></td></tr>
             ))}</tbody></table>
           <form className="inline-form" onSubmit={(e) => { e.preventDefault(); run(() => api(`/t/${tenantId}/results/agents`, { method: 'PUT', body: { userId: asg.userId, scope: asg.scope, ...(asg.scope === 'station' ? { areaCode: asg.areaCode } : {}) } }), 'Saved.'); }}>
-            <label>Person<select value={asg.userId} onChange={(e) => setAsg({ ...asg, userId: e.target.value })} required><option value="">–</option>{team.map((m) => <option key={m.userId} value={m.userId}>{m.name ?? m.phone} ({m.role})</option>)}</select></label>
+            <label>Person<select value={asg.userId} onChange={(e) => setAsg({ ...asg, userId: e.target.value })} required><option value="">–</option>{team.map((m) => <option key={m.userId} value={m.userId}>{m.name ?? m.email} ({m.role})</option>)}</select></label>
             <label>For<select value={asg.scope} onChange={(e) => setAsg({ ...asg, scope: e.target.value })}><option value="station">A station</option><option value="counting">The counting hall</option></select></label>
             {asg.scope === 'station' && <label>Station code<input value={asg.areaCode} onChange={(e) => setAsg({ ...asg, areaCode: e.target.value })} required /></label>}
             <button className="btn">Assign</button>

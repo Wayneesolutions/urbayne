@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, Navigate, NavLink, Route, Routes, useNavigate, useParams, Outlet } from 'react-router-dom';
 import { api, session } from './api';
 import { Login } from './pages/Login';
+import { ChangePassword, ForgotPassword, ResetPassword } from './pages/PasswordPages';
+import { SuperAdmin } from './pages/SuperAdmin';
 import { Overview } from './pages/Overview';
 import { Content } from './pages/Content';
 import { Contacts } from './pages/Contacts';
@@ -28,6 +30,10 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/change-password" element={<RequireAuth><ChangePassword /></RequireAuth>} />
+      <Route path="/superadmin" element={<RequireAuth><SuperAdmin /></RequireAuth>} />
       <Route path="/" element={<RequireAuth><CampaignPicker /></RequireAuth>} />
       <Route path="/platform" element={<RequireAuth><Platform /></RequireAuth>} />
       <Route path="/agency/:agencyId" element={<RequireAuth><Agency /></RequireAuth>} />
@@ -63,11 +69,12 @@ function RequireAuth({ children }: { children: JSX.Element }) {
 function CampaignPicker() {
   const [list, setList] = useState<{ tenant_id: string; campaign_name: string; region: string; role: string }[] | null>(null);
   const [isStaff, setIsStaff] = useState(false);
+  const [isSuper, setIsSuper] = useState(false);
   const [agencies, setAgencies] = useState<{ id: string; name: string; brandName: string | null; role: string }[]>([]);
   const nav = useNavigate();
   useEffect(() => {
     Promise.all([api('/auth/me'), api('/agencies/mine').catch(() => [])]).then(([m, ag]) => {
-      setList(m.campaigns); setAgencies(ag); setIsStaff(Boolean(m.user?.wes));
+      setList(m.campaigns); setAgencies(ag); setIsStaff(Boolean(m.user?.wes)); setIsSuper(Boolean(m.user?.isSuperAdmin));
       if (m.campaigns.length === 1 && !ag.length) nav(`/c/${m.campaigns[0].tenant_id}`, { replace: true });
       if (!m.campaigns.length && ag.length === 1) nav(`/agency/${ag[0].id}`, { replace: true });
     });
@@ -78,6 +85,7 @@ function CampaignPicker() {
       <div className="panel narrow">
         <h1>Your campaigns</h1>
         {list.length === 0 && agencies.length === 0 && <p className="muted">You are not part of a campaign yet. Ask the campaign owner for an invite.</p>}
+        {isSuper && <p><Link className="btn" to="/superadmin">Super admin: accounts</Link></p>}
         {isStaff && <p><Link className="btn" to="/platform">Packages and pricing (platform staff)</Link></p>}
         {agencies.length > 0 && <><h2 className="small muted">Your agency</h2><ul className="picker">{agencies.map((a) => <li key={a.id}><button onClick={() => nav(`/agency/${a.id}`)}><strong>{a.brandName ?? a.name}</strong><span className="muted">All campaigns · {a.role}</span></button></li>)}</ul></>}
         <ul className="picker">{list.map((c) => (
@@ -139,6 +147,7 @@ function Shell() {
           </>}
         </nav>
         {brand?.supportEmail && <a className="side-meta" href={`mailto:${brand.supportEmail}`}>Help: {brand.supportEmail}</a>}
+        <Link className="side-meta" to="/change-password">Change password</Link>
         <button className="linklike side-out" onClick={() => { session.clear(); nav('/login'); }}>Sign out</button>
       </aside>
       <main className="work"><Outlet context={{ ...ctx, reload: load } satisfies ShellCtx} /></main>

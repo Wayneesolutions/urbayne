@@ -6,6 +6,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { createApp } from '../src/app.js';
 import type { Env } from '../src/env.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor, emailFor } from './auth-helper.js';
 
 const OWNER_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
@@ -18,13 +19,13 @@ run('Phase 2 (integration)', () => {
   let tin = '', tca = '', area = '', area2 = '', turf = '', contactA = '';
   const as = (who: string) => ({ Authorization: `Bearer ${tok[who]}` });
   async function login(phone: string) {
-    const r = await request(app).post('/api/auth/otp/request').send({ phone }).expect(200);
-    return (await request(app).post('/api/auth/otp/verify').send({ phone, code: r.body.devCode }).expect(200)).body.accessToken as string;
+    const r = await ensureUser(app, phone).expect(200);
+    return (await tokenFor(app, phone).expect(200)).body.accessToken as string;
   }
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
-    await owner.query('TRUNCATE audit_log, finance_signoffs, finance_entries, rate_list, signs, shift_assignments, shifts, events, door_visits, turfs, assistant_questions, share_links, survey_responses, interactions, campaign_runs, consents, contacts, content_items, geo_areas, memberships, tenants, otp_codes, users CASCADE');
+    await owner.query('TRUNCATE audit_log, finance_signoffs, finance_entries, rate_list, signs, shift_assignments, shifts, events, door_visits, turfs, assistant_questions, share_links, survey_responses, interactions, campaign_runs, consents, contacts, content_items, geo_areas, memberships, tenants, users CASCADE');
     pool = new pg.Pool({ connectionString: APP_URL });
     app = createApp({ env, pool });
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -42,9 +43,9 @@ run('Phase 2 (integration)', () => {
   afterAll(async () => { vi.restoreAllMocks(); await pool.end(); await owner.end(); });
 
   it('team: owner adds a worker; a worker cannot add managers', async () => {
-    await request(app).post(`/api/t/${tin}/members`).set(as('owner')).send({ phone: '+919800000202', name: 'Worker W', role: 'field_worker' }).expect(201);
+    await request(app).post(`/api/t/${tin}/members`).set(as('owner')).send({ email: emailFor('+919800000202'), phone: '+919800000202', name: 'Worker W', role: 'field_worker' }).expect(201);
     tok.worker = await login('+919800000202');
-    await request(app).post(`/api/t/${tin}/members`).set(as('worker')).send({ phone: '+919800000203', role: 'manager' }).expect(403);
+    await request(app).post(`/api/t/${tin}/members`).set(as('worker')).send({ email: emailFor('+919800000203'), role: 'manager' }).expect(403);
     const members = (await request(app).get(`/api/t/${tin}/members`).set(as('owner')).expect(200)).body;
     expect(members.map((m: { role: string }) => m.role).sort()).toEqual(['field_worker', 'owner']);
   });
@@ -117,8 +118,8 @@ run('Phase 2 (integration)', () => {
 
   it('Canada: contribution limits, receipts, and a planned sign route', async () => {
     const capp = createApp({ env: { ...env, DEPLOY_REGION: 'CA' }, pool });
-    const r = await request(capp).post('/api/auth/otp/request').send({ phone: '+12045550301' });
-    const token = (await request(capp).post('/api/auth/otp/verify').send({ phone: '+12045550301', code: r.body.devCode })).body.accessToken;
+    const r = await ensureUser(capp, '+12045550301');
+    const token = (await tokenFor(capp, '+12045550301')).body.accessToken;
     const a = { Authorization: `Bearer ${token}` };
     tca = (await request(capp).post('/api/tenants').set(a).send({ raceType: 'ward', seatCode: 'W9', electionDate: '2026-10-28', campaignName: 'CA P2' }).expect(201)).body.id;
     await request(capp).patch(`/api/tenants/${tca}/settings`).set(a).send({ contributionLimitMinor: 75_000, officeLat: 49.95, officeLng: -97.2 }).expect(200);

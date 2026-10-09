@@ -4,6 +4,7 @@ import request from 'supertest';
 import pg from 'pg';
 import { createApp } from '../src/app.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor } from './auth-helper.js';
 
 const OWNER_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
@@ -23,15 +24,15 @@ run('India DLT templates and reminders (integration)', () => {
   let providerReply: object = { type: 'success', message: 'req-1' };
 
   async function login(phone: string) {
-    const r = await request(app).post('/api/auth/otp/request').send({ phone });
-    return (await request(app).post('/api/auth/otp/verify').send({ phone, code: r.body.devCode })).body.accessToken as string;
+    const r = await ensureUser(app, phone);
+    return (await tokenFor(app, phone)).body.accessToken as string;
   }
   const tpl = (over: object = {}) => request(app).post(`/api/t/${tin}/content`).set(auth()).send({ kind: 'sms_template', locale: 'en', title: 'Shift reminder', body: TEMPLATE, templateKey: 'shift_reminder', ...over });
   const dlt = (id: string, body: object) => request(app).post(`/api/t/${tin}/content/${id}/dlt`).set(auth()).send(body);
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
-    await owner.query('TRUNCATE audit_log, shift_assignments, shifts, interactions, consents, contacts, content_items, geo_areas, memberships, tenants, otp_codes, users CASCADE');
+    await owner.query('TRUNCATE audit_log, shift_assignments, shifts, interactions, consents, contacts, content_items, geo_areas, memberships, tenants, users CASCADE');
     pool = new pg.Pool({ connectionString: APP_URL });
     // A live (non-demo) India campaign gets the real DLT adapter; its HTTP calls are captured here instead of leaving the machine.
     app = createApp({ env, pool, channels: { dltSms: { authKey: 'K', senderId: 'WAYNES' } } });
@@ -43,8 +44,8 @@ run('India DLT templates and reminders (integration)', () => {
     });
     token = await login('+919800000801');
     tin = (await request(app).post('/api/tenants').set(auth()).send({ raceType: 'assembly', seatCode: 'DL-1', electionDate: '2027-02-20', campaignName: 'DLT Test' })).body.id;
-    const rc = await request(appCa).post('/api/auth/otp/request').send({ phone: '+12045550801' });
-    tokenCa = (await request(appCa).post('/api/auth/otp/verify').send({ phone: '+12045550801', code: rc.body.devCode })).body.accessToken;
+    const rc = await ensureUser(appCa, '+12045550801');
+    tokenCa = (await tokenFor(appCa, '+12045550801')).body.accessToken;
     tca = (await request(appCa).post('/api/tenants').set({ Authorization: `Bearer ${tokenCa}` }).send({ raceType: 'ward', seatCode: 'DL-CA', electionDate: '2026-10-26', campaignName: 'CA Test' })).body.id;
   });
   afterAll(async () => { vi.unstubAllGlobals(); vi.restoreAllMocks(); await pool.end(); await owner.end(); });

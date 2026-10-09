@@ -8,8 +8,8 @@ One codebase, two editions: India (`IN`) and Canada (`CA`). See the Engineering 
 | --- | --- |
 | `packages/regions` | Region configs for IN and CA: languages, providers, approval gate, silence window, calling hours, AI disclosure text, donation rules. Unconfirmed legal values are `null` or flagged in `confirmWithCounsel`. |
 | `packages/compliance` | The compliance engine. `checkOutbound()` runs all gates (approval/certificate, DLT template, silence window, calling hours, consent and opt-outs, donation rule, AI disclosure, campaign identification, rate limit, spend). 21 unit tests. |
-| `packages/db` | Postgres schema (tenants, users, OTP, memberships, geo areas, contacts, consents, content items, audit log), Row-Level Security per tenant, the one-race-one-client unique index, a minimal migrator, and Drizzle types. |
-| `apps/api` | Express API: phone OTP login with JWT, campaign (tenant) creation, content drafting and approval (MCMC certificate in IN, owner approval in CA, disclosure check on scripts, edits reset to draft), contacts with consent capture and data-source guardrails, and a compliance dry-run endpoint. 11 integration tests against real Postgres. |
+| `packages/db` | Postgres schema (tenants, users, memberships, geo areas, contacts, consents, content items, audit log), Row-Level Security per tenant, the one-race-one-client unique index, a minimal migrator, and Drizzle types. |
+| `apps/api` | Express API: email and password login with JWT, campaign (tenant) creation, content drafting and approval (MCMC certificate in IN, owner approval in CA, disclosure check on scripts, edits reset to draft), contacts with consent capture and data-source guardrails, and a compliance dry-run endpoint. 11 integration tests against real Postgres. |
 | `scripts/guardrails.mjs` | CI check that fails the build if any WhatsApp automation dependency is added. |
 
 **Phases 4 and 5** (maps and road routing, roll imports, recorded voice, receipts and bank reconciliation, agencies, Punjab and Manitoba 2027 packages, pricing and metering) are described in [docs/phase4-5.md](docs/phase4-5.md), including what is **not** done.
@@ -37,7 +37,7 @@ pnpm db:migrate
 pnpm dev:api                    # http://localhost:4000/health
 ```
 
-OTP codes print to the API console in development (`OTP_PROVIDER=console`).
+People sign in with an email and a password (see [docs/auth.md](docs/auth.md)). Create the first super admin with `SUPERADMIN_EMAIL` + `SUPERADMIN_PASSWORD` in `.env`, or `pnpm --filter @cs/api create-superadmin you@example.com`. `SMTP_URL` is optional: without it, development logs the emails and production switches "forgot password" off.
 
 ## Test
 
@@ -53,8 +53,11 @@ pnpm test
 
 | Method | Path | Who |
 | --- | --- | --- |
-| POST | `/api/auth/otp/request` | anyone |
-| POST | `/api/auth/otp/verify` | anyone |
+| POST | `/api/auth/login` | anyone (email + password) |
+| POST | `/api/auth/forgot` | anyone (emails a reset link) |
+| POST | `/api/auth/reset` | anyone with a reset link |
+| POST | `/api/auth/change-password` | signed-in |
+| * | `/api/superadmin/users...` | super admin (create/disable accounts, reset passwords) |
 | POST | `/api/auth/refresh` | signed-in |
 | GET | `/api/auth/me` | signed-in (lists campaigns) |
 | POST | `/api/tenants` | signed-in (becomes owner) |
@@ -88,11 +91,11 @@ pnpm test
 
 ```bash
 pnpm install
-cp .env.example .env          # set PHONE_ENC_KEY, PHONE_HASH_KEY (openssl rand -base64 32), DEV_RETURN_OTP=true
+cp .env.example .env          # set PHONE_ENC_KEY, PHONE_HASH_KEY (openssl rand -base64 32)
 pnpm db:up && pnpm demo       # builds dashboard, migrates, seeds, starts the API on :4000
 ```
 
-- Dashboard: http://localhost:4000/admin (India demo login `+919999900001`, Canada `+12045550001`; with `DEV_RETURN_OTP=true` the code fills itself in)
+- Dashboard: http://localhost:4000/admin (demo accounts `manager.in@demo.local` for India and `manager.ca@demo.local` for Canada; password `Demo-password-123` unless `DEMO_PASSWORD` is set. Demo accounts are for demo servers only)
 - Voter pages: http://localhost:4000/v/demo-ludhiana and http://localhost:4000/v/demo-winnipeg-ward3
 
 Demo flow that sells: open the voter page on a phone, pick an area, press the big listen button, ask the assistant a question and then "where is my booth". Switch to the dashboard, create a call run, show the rules check, start it, and watch the survey fill in by area. Download the evidence pack at the end.
@@ -105,7 +108,7 @@ Note: the Canada demo follows real CRTC hours in Winnipeg time, so outside 9:00 
 
 With `REDIS_URL` set (required when `NODE_ENV=production`), everything that must be shared between servers is:
 
-- **Rate limits**: per-IP limits on OTP request/verify and the public voter endpoints are counted in Redis (atomic INCR + expiry), so spreading requests over servers does not help an abuser. If Redis is briefly down the limiter lets requests through and logs; per-phone OTP limits stay in the database.
+- **Rate limits**: per-IP limits on sign-in and the public voter endpoints are counted in Redis (atomic INCR + expiry), so spreading requests over servers does not help an abuser. If Redis is briefly down the limiter lets requests through and logs; per-account sign-in limits live in the same shared store.
 - **Sessions**: each login creates a session, and a refresh token only works while its session exists. `POST /api/auth/logout` ends one device, `POST /api/auth/logout-all` ends all of them. (The 15-minute access token simply expires.)
 - **Call runs and shift reminders** run as BullMQ jobs (`call-runs`, `reminders`). Starting or resuming a run queues one job per run (a second kick is a no-op). `RUN_WORKERS=true` runs workers inside the API process; in production run dedicated workers with `pnpm worker` and set `RUN_WORKERS=false` on API servers.
 - **Row locking**: workers claim each call with `SELECT ... FOR UPDATE SKIP LOCKED` and mark it `in_progress` before the provider is called, so two workers can never dial the same voter. The provider call happens outside any database transaction. A call claimed by a worker that then died (no provider reference after 10 minutes) is closed as `failed` and never re-dialled. Shift reminders use the same locking.
@@ -116,7 +119,7 @@ Local Redis without Docker (Windows): download `Redis-x64-5.0.14.1.zip` from git
 
 ## Observability (P0 item 10)
 
-- **Logs**: one JSON line per request (`reqId`, method, path without query string, status, ms, tenant and user ids). Request bodies, tokens, OTP codes, transcripts and phone numbers are never logged (redaction list in `lib/logger.ts`, phone numbers inside messages are masked). Every response carries `X-Request-Id`; send your own to trace a call end to end. `LOG_LEVEL` sets the level.
+- **Logs**: one JSON line per request (`reqId`, method, path without query string, status, ms, tenant and user ids). Request bodies, tokens, passwords, transcripts and phone numbers are never logged (redaction list in `lib/logger.ts`, phone numbers inside messages are masked). Every response carries `X-Request-Id`; send your own to trace a call end to end. `LOG_LEVEL` sets the level.
 - **Errors**: set `SENTRY_DSN` to send unexpected errors (5xx, failed queue jobs after their last retry) to Sentry, tagged with region, request id and campaign id. Before sending, request bodies, cookies, auth headers, user info and phone numbers are stripped (`scrubEvent`). Expected errors (401, 404, validation) are logged but not reported. Without a DSN nothing is sent.
 - **Readiness**: `GET /ready` returns 200 when the database (and Redis, if configured) answer, 503 otherwise, with no details. Use it for the load balancer; `GET /health` stays a plain liveness check.
 - **Provider cost dashboard**: `GET /api/t/:tenantId/costs?days=30` (owner, manager, finance agent) shows one campaign's AI call spend by day and by run and its share of the spending limit. `GET /api/admin/costs?days=30` (Wayne E Solutions staff only) shows spend per campaign and per region across the platform. Costs come from the provider's end-of-call report (see call cost in the finance register).
@@ -128,7 +131,6 @@ India SMS must be sent under a DLT-registered template and sender header, and th
 - **Adapter**: `DltSms` (`packages/channels/src/dlt.ts`) sends through MSG91's send-SMS API v2 (`DLT_AUTH_KEY`, `DLT_SENDER_ID`). It fails closed: no template id, no template text, a message that does not match the template, or a non-Indian number means nothing is sent. **Written from the provider's public docs and tested with a mocked HTTP layer only: confirm with a real account before the first live send.** Another DLT provider needs only a new adapter behind the same `SmsChannel` interface.
 - **Template lifecycle** (India only): create an `sms_template` (text is checked: `{#var#}` only, no two variables side by side, at most 8, at most 1000 characters; warnings for links and a missing opt-out line) -> `GET /api/t/:id/content/:contentId/dlt` shows the text to paste into the DLT portal -> `POST .../dlt {action:"submitted"}` -> when the operator approves, `POST .../dlt {action:"registered", templateId, header}` (template id 10-25 digits, 6-letter header) or `{action:"rejected", reason}`. Editing the text resets the registration, because it covered the old text only. Content still needs the MCMC certificate to be approved.
 - **Shift reminders** in India use the registered, certified template with `templateKey: "shift_reminder"` (suggested text: `{#var#}: reminder, {#var#}, {#var#}. Reply STOP to opt out.` for campaign, shift, day and time). A variable over 30 characters stops the whole send. Failed sends are not marked as reminded, so they can be retried.
-- **Login codes**: `OTP_PROVIDER=dlt` with `DLT_OTP_TEMPLATE_ID` and `DLT_OTP_TEMPLATE_TEXT` (one `{#var#}` for the code); checked at startup.
 
 ## Vapi live calls (P0 item 5)
 

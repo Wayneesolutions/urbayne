@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { validateDltTemplate } from '@cs/channels';
 import { getRegion } from '@cs/regions';
 
 const schema = z.object({
@@ -11,7 +10,6 @@ const schema = z.object({
   JWT_REFRESH_SECRET_PREVIOUS: z.string().min(16).optional(),
   EVIDENCE_SIGNING_KEY_PREVIOUS: z.string().min(32).optional(),
   DEPLOY_REGION: z.enum(['IN', 'CA']),
-  OTP_PROVIDER: z.enum(['console', 'twilio', 'dlt']).default('console'),
   PHONE_ENC_KEY: z.string().min(40),
   PHONE_HASH_KEY: z.string().min(40),
   PORT: z.coerce.number().default(4000),
@@ -37,9 +35,6 @@ const schema = z.object({
   DLT_AUTH_KEY: z.string().optional(),
   DLT_SENDER_ID: z.string().regex(/^[A-Za-z]{6}$/, 'DLT_SENDER_ID must be the 6-letter registered header').optional(),
   DLT_BASE_URL: z.string().url().optional(),
-  // Login-code SMS (OTP_PROVIDER=dlt): the registered template id and its exact text with ONE {#var#} for the code.
-  DLT_OTP_TEMPLATE_ID: z.string().regex(/^\d{10,25}$/).optional(),
-  DLT_OTP_TEMPLATE_TEXT: z.string().max(1000).optional(),
   // AI assistant (optional; without it the assistant answers extractively from approved text).
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-5'),
@@ -69,20 +64,21 @@ const schema = z.object({
   // Log level: fatal | error | warn | info | debug | trace | silent. Tests default to silent.
   LOG_LEVEL: z.string().optional(),
   NODE_ENV: z.string().default('development'),
-  // DEV/DEMO ONLY: return the OTP in the API response so a demo can log in without SMS.
-  DEV_RETURN_OTP: z.enum(['true', 'false']).default('false'),
+  // Email for password reset links and invites. Optional: without SMTP_URL, "forgot password" and email invites are switched off in
+  // production (a super admin resets passwords by hand); in development the message and its link are written to the log.
+  SMTP_URL: z.string().url().optional(),
+  // Sign-in attempts allowed per IP address per 10 minutes (each account is also limited separately).
+  LOGIN_MAX_PER_IP: z.coerce.number().int().min(5).default(30),
+  MAIL_FROM: z.string().default('Campaign Suite <no-reply@localhost>'),
+  // DEV/DEMO ONLY: the forgot-password answer includes the reset token, so a demo works without a mail server.
+  DEV_RETURN_RESET_TOKEN: z.enum(['true', 'false']).default('false'),
+  // First super admin: created at startup when no super admin exists yet. Remove the password from the environment afterwards.
+  SUPERADMIN_EMAIL: z.string().email().optional(),
+  SUPERADMIN_PASSWORD: z.string().min(10).optional(),
 }).refine((e) => !(e.NODE_ENV === 'production' && !e.REDIS_URL), {
   message: 'REDIS_URL is required in production (rate limits, sessions and call queues must be shared between servers)',
-}).refine((e) => !(e.NODE_ENV === 'production' && e.DEV_RETURN_OTP === 'true'), {
-  message: 'DEV_RETURN_OTP must never be enabled in production',
-}).refine((e) => !(e.NODE_ENV === 'production' && e.OTP_PROVIDER === 'console'), {
-  message: 'OTP_PROVIDER=console is for development only; use twilio (CA) or dlt (IN) in production',
-}).refine((e) => e.OTP_PROVIDER !== 'twilio' || !!(e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && e.TWILIO_MESSAGING_SERVICE_SID), {
-  message: 'OTP_PROVIDER=twilio needs TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_MESSAGING_SERVICE_SID',
-}).refine((e) => e.OTP_PROVIDER !== 'dlt' || !!(e.DLT_AUTH_KEY && e.DLT_SENDER_ID && e.DLT_OTP_TEMPLATE_ID && e.DLT_OTP_TEMPLATE_TEXT), {
-  message: 'OTP_PROVIDER=dlt needs DLT_AUTH_KEY, DLT_SENDER_ID, DLT_OTP_TEMPLATE_ID and DLT_OTP_TEMPLATE_TEXT',
-}).refine((e) => e.OTP_PROVIDER !== 'dlt' || !e.DLT_OTP_TEMPLATE_TEXT || (() => { const c = validateDltTemplate(e.DLT_OTP_TEMPLATE_TEXT); return c.ok && c.varCount === 1; })(), {
-  message: 'DLT_OTP_TEMPLATE_TEXT must be a valid DLT template with exactly one {#var#} (the code)',
+}).refine((e) => !(e.NODE_ENV === 'production' && e.DEV_RETURN_RESET_TOKEN === 'true'), {
+  message: 'DEV_RETURN_RESET_TOKEN must never be enabled in production',
 }).refine((e) => !(e.NODE_ENV === 'production' && !e.EVIDENCE_SIGNING_KEY), {
   message: 'EVIDENCE_SIGNING_KEY is required in production',
 }).refine((e) => !(e.NODE_ENV === 'production' && e.STORAGE_DRIVER !== 's3'), {

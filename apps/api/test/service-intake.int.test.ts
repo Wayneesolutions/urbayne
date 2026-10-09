@@ -6,6 +6,7 @@ import jwt from 'jsonwebtoken';
 import { createApp, resolveDeps } from '../src/app.js';
 import { twilioSignature } from '../src/modules/service/inbound.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor } from './auth-helper.js';
 
 const SECRET = 'vapi-hook-secret-0123456789';
 const TWILIO = 'twilio-auth-token-0123456789';
@@ -30,8 +31,8 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
   const as = (who: string) => ({ Authorization: `Bearer ${tok[who]}` });
   const q = async (sql: string, args: unknown[] = []) => (await owner.query(sql, args)).rows;
   async function login(a: ReturnType<typeof createApp>, phone: string) {
-    const r = await request(a).post('/api/auth/otp/request').send({ phone });
-    return (await request(a).post('/api/auth/otp/verify').send({ phone, code: r.body.devCode })).body.accessToken as string;
+    const r = await ensureUser(a, phone);
+    return (await tokenFor(a, phone)).body.accessToken as string;
   }
   const waitFor = async (check: () => Promise<boolean>, ms = 4000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await check()) return true; await new Promise((r) => setTimeout(r, 50)); } return false; };
   const twilio = (params: Record<string, string>, sign = true) => {
@@ -45,7 +46,7 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
-    await owner.query('TRUNCATE tenants, users, otp_codes CASCADE');
+    await owner.query('TRUNCATE tenants, users CASCADE');
     pool = new pg.Pool({ connectionString: APP_URL });
     app = createApp(resolveDeps({ env, pool }));
     vi.spyOn(console, 'log').mockImplementation(() => {});

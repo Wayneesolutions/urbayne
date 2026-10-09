@@ -9,6 +9,7 @@ import { parseRollRows } from '../src/modules/field/roll.js';
 import { purgeTenantData } from '../src/modules/privacy/purge.js';
 import { resolveDeps } from '../src/app.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor, emailFor } from './auth-helper.js';
 
 const OWNER_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
@@ -49,13 +50,13 @@ run('Roll import (integration)', () => {
   const desc = encodeURIComponent('Certified roll copy, Part 14, received from ERO 3 Jan 2027 under Rule 22');
 
   async function signIn(phone: string) {
-    const r = await request(app).post('/api/auth/otp/request').send({ phone });
-    return (await request(app).post('/api/auth/otp/verify').send({ phone, code: r.body.devCode })).body.accessToken as string;
+    const r = await ensureUser(app, phone);
+    return (await tokenFor(app, phone)).body.accessToken as string;
   }
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
-    await owner.query('TRUNCATE audit_log, households, roll_imports, door_visits, turfs, stored_files, geo_areas, memberships, tenants, otp_codes, users CASCADE');
+    await owner.query('TRUNCATE audit_log, households, roll_imports, door_visits, turfs, stored_files, geo_areas, memberships, tenants, users CASCADE');
     pool = new pg.Pool({ connectionString: APP_URL });
     app = createApp({ env, pool, store });
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -63,10 +64,10 @@ run('Roll import (integration)', () => {
     workerToken = await signIn('+919800000802');
     outsiderToken = await signIn('+919800000803');
     tenantId = (await request(app).post('/api/tenants').set(auth()).send({ raceType: 'assembly', seatCode: 'ROLL-1', electionDate: '2027-02-20', campaignName: 'Roll Test' })).body.id;
-    const m = (await request(app).post(`/api/t/${tenantId}/members`).set(auth()).send({ phone: '+919800000802', role: 'field_worker' }));
+    const m = (await request(app).post(`/api/t/${tenantId}/members`).set(auth()).send({ email: emailFor('+919800000802'), role: 'field_worker' }));
     expect([200, 201]).toContain(m.status);
     areaId = (await request(app).post(`/api/t/${tenantId}/geo`).set(auth()).send({ level: 'locality', nameEn: 'Gali Area' })).body.id;
-    const [w] = await q("SELECT id FROM users WHERE phone_hash IS NOT NULL ORDER BY created_at LIMIT 1 OFFSET 1");
+    const [w] = await q('SELECT id FROM users WHERE email = $1', [emailFor('+919800000802')]);
     turfId = (await request(app).post(`/api/t/${tenantId}/field/turfs`).set(auth()).send({ geoAreaId: areaId, name: 'Turf A', assignedUserId: w.id })).body.id;
   });
   afterAll(async () => { vi.restoreAllMocks(); await pool.end(); await owner.end(); });

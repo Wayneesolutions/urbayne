@@ -30,8 +30,8 @@ export interface DepsInit {
   now?: () => Date;
   /** Override channels (tests). */
   channels?: import('@cs/channels').ChannelEnv;
-  /** Override login-code delivery (tests). */
-  otpSender?: import('./lib/otp-sender.js').OtpSender;
+  /** Where password reset emails go. Defaults to SMTP when SMTP_URL is set, otherwise the log (development). Tests pass a MemoryMailer. */
+  mailer?: import('./lib/mailer.js').Mailer;
 }
 
 export interface Deps extends DepsInit {
@@ -40,6 +40,7 @@ export interface Deps extends DepsInit {
   log: Logger;
   reporter: ErrorReporter;
   store: BlobStore;
+  mailer: import('./lib/mailer.js').Mailer;
 }
 
 export type EffectiveRole = Role | 'wes_admin';
@@ -51,7 +52,7 @@ declare global {
     interface Request {
       /** Request id (also returned as X-Request-Id and attached to error reports). */
       id?: string;
-      user?: { id: string; wes: boolean };
+      user?: { id: string; wes: boolean; sa: boolean };
       tenant?: TenantRow;
       role?: EffectiveRole;
     }
