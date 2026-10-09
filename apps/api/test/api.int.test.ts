@@ -11,6 +11,7 @@ import { randomBytes } from 'node:crypto';
 import { createApp } from '../src/app.js';
 import type { Env } from '../src/env.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor, emailFor } from './auth-helper.js';
 import { IN, CA } from '@cs/regions';
 
 const OWNER_URL = process.env.TEST_DATABASE_URL;
@@ -28,19 +29,13 @@ run('API (integration)', () => {
   let appIN: ReturnType<typeof createApp>;
   let appCA: ReturnType<typeof createApp>;
 
-  async function login(app: ReturnType<typeof createApp>, phone: string) {
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    await request(app).post('/api/auth/otp/request').send({ phone }).expect(200);
-    const line = String(spy.mock.calls.at(-1)?.[0] ?? '');
-    spy.mockRestore();
-    const code = line.split('-> ')[1]!;
-    const res = await request(app).post('/api/auth/otp/verify').send({ phone, code }).expect(200);
-    return res.body.accessToken as string;
+  async function login(app: ReturnType<typeof createApp>, label: string) {
+    return (await tokenFor(app, label).expect(200)).body.accessToken as string;
   }
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
-    await owner.query('TRUNCATE audit_log, consents, contacts, content_items, geo_areas, memberships, tenants, otp_codes, users CASCADE');
+    await owner.query('TRUNCATE audit_log, consents, contacts, content_items, geo_areas, memberships, tenants, users CASCADE');
     pool = new pg.Pool({ connectionString: APP_URL });
     appIN = createApp({ env: baseEnv('IN'), pool });
     appCA = createApp({ env: baseEnv('CA'), pool });
@@ -54,12 +49,15 @@ run('API (integration)', () => {
     await request(appIN).post('/api/tenants').send({}).expect(401);
   });
 
-  it('rejects a wrong OTP', async () => {
-    await request(appIN).post('/api/auth/otp/request').send({ phone: '+919800000009' }).expect(200);
-    await request(appIN).post('/api/auth/otp/verify').send({ phone: '+919800000009', code: '000000' }).expect(401);
+  it('rejects a wrong password, and an unknown email, with the same answer', async () => {
+    await ensureUser(appIN, '+919800000009');
+    const wrong = await request(appIN).post('/api/auth/login').send({ email: emailFor('+919800000009'), password: 'not-the-password-1' }).expect(401);
+    const unknown = await request(appIN).post('/api/auth/login').send({ email: 'nobody@test.local', password: 'not-the-password-1' }).expect(401);
+    expect(wrong.body).toEqual(unknown.body);
+    expect(wrong.body.error).toBe('INVALID_LOGIN');
   });
 
-  it('logs in by OTP and creates a campaign', async () => {
+  it('logs in by email and creates a campaign', async () => {
     tokenA = await login(appIN, '+919800000001');
     tokenB = await login(appIN, '+919800000002');
     const res = await request(appIN).post('/api/tenants').set('Authorization', `Bearer ${tokenA}`).send({

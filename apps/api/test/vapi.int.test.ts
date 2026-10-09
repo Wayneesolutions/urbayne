@@ -8,6 +8,7 @@ import { mapEndedReason, parseEndOfCall, sanitizeAnswers } from '../src/modules/
 import { reconcileCallCost } from '../src/modules/calls/cost.js';
 import { purgeTenantData, deleteProviderCallData } from '../src/modules/privacy/purge.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor } from './auth-helper.js';
 
 const SECRET = 'vapi-hook-secret-0123456789';
 const survey = [
@@ -128,7 +129,7 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
-    await owner.query('TRUNCATE audit_log, data_purges, suppressions, finance_entries, survey_responses, interactions, campaign_runs, consents, contacts, content_items, memberships, tenants, otp_codes, users CASCADE');
+    await owner.query('TRUNCATE audit_log, data_purges, suppressions, finance_entries, survey_responses, interactions, campaign_runs, consents, contacts, content_items, memberships, tenants, users CASCADE');
     pool = new pg.Pool({ connectionString: APP_URL });
     deps = resolveDeps({ env, pool, channels });
     app = createApp(deps);
@@ -139,8 +140,8 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
       if (method === 'DELETE') return { ok: deleteStatus === 200, status: deleteStatus, json: async () => ({}) };
       return { ok: true, status: 200, json: async () => ({ id: 'x', cost: callCost, status: 'ended', endedReason: 'customer-ended-call' }) };
     });
-    const r = await request(app).post('/api/auth/otp/request').send({ phone: '+919800000901' });
-    token = (await request(app).post('/api/auth/otp/verify').send({ phone: '+919800000901', code: r.body.devCode })).body.accessToken;
+    const r = await ensureUser(app, '+919800000901');
+    token = (await tokenFor(app, '+919800000901')).body.accessToken;
     tenantId = (await request(app).post('/api/tenants').set({ Authorization: `Bearer ${token}` }).send({ raceType: 'assembly', seatCode: 'VP-1', electionDate: '2027-02-20', campaignName: 'Vapi Test' })).body.id;
     contentId = (await q("INSERT INTO content_items (tenant_id, kind, locale, title, body, status, survey) VALUES ($1,'script','pa','s','b','approved',$2) RETURNING id", [tenantId, JSON.stringify(survey)]))[0].id;
     runId = (await q("INSERT INTO campaign_runs (tenant_id, name, channel, content_item_id, purpose, status, started_at) VALUES ($1,'R','voice',$2,'survey','running', now()) RETURNING id", [tenantId, contentId]))[0].id;

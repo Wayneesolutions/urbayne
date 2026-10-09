@@ -8,6 +8,7 @@ import { createApp, resolveDeps } from '../src/app.js';
 import { createLogger, maskPhones } from '../src/lib/logger.js';
 import { scrubEvent, type ErrorReporter, type ErrorContext } from '../src/lib/observability.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor } from './auth-helper.js';
 
 const memoryStream = () => {
   const lines: string[] = [];
@@ -69,14 +70,14 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
-    await owner.query('TRUNCATE audit_log, finance_entries, interactions, campaign_runs, content_items, memberships, tenants, otp_codes, users CASCADE');
+    await owner.query('TRUNCATE audit_log, finance_entries, interactions, campaign_runs, content_items, memberships, tenants, users CASCADE');
     pool = new pg.Pool({ connectionString: APP_URL });
     logs = memoryStream();
     reporter = new FakeReporter();
     app = createApp(resolveDeps({ env, pool, log: createLogger({ level: 'info', destination: logs.stream }), reporter }));
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    const r = await request(app).post('/api/auth/otp/request').send({ phone });
-    token = (await request(app).post('/api/auth/otp/verify').send({ phone, code: r.body.devCode })).body.accessToken;
+    const r = await ensureUser(app, phone);
+    token = (await tokenFor(app, phone)).body.accessToken;
     tenantId = (await request(app).post('/api/tenants').set(auth()).send({ raceType: 'assembly', seatCode: 'OB-1', electionDate: '2027-02-20', campaignName: 'Obs Test' })).body.id;
     await owner.query('UPDATE tenants SET spend_limit_minor = 1000000 WHERE id = $1', [tenantId]);
   });
@@ -88,9 +89,10 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
     const generated = await request(app).get('/api/region').set('X-Request-Id', 'bad id with spaces').expect(200);
     expect(generated.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
 
-    await request(app).post('/api/auth/otp/request').send({ phone: '+919800000799' });
+    await request(app).post('/api/auth/login').send({ email: 'leak.check@test.local', password: 'Leak-check-pass1' }).expect(401);
     const all = logs.text();
-    expect(all).not.toContain('919800000799');
+    expect(all).not.toContain('Leak-check-pass1');
+    expect(all).not.toContain('leak.check@test.local');
     const line = logs.json().find((l) => l.reqId === 'trace-abc-12345')!;
     expect(line).toMatchObject({ method: 'GET', path: '/api/region', status: 200, level: 'info' });
     expect(typeof line.ms).toBe('number');
@@ -104,7 +106,7 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
     const before = reporter.captured.length;
     await request(app).get(`/api/t/${tenantId}/privacy`).expect(401);
     await request(app).get('/api/t/00000000-0000-4000-8000-000000000000/privacy').set(auth()).expect(404);
-    await request(app).post('/api/auth/otp/request').send({}).expect(400);
+    await request(app).post('/api/auth/login').send({}).expect(400);
     expect(reporter.captured.length).toBe(before);
     expect(logs.json().some((l) => l.level === 'warn' && l.status === 401)).toBe(true);
     await request(app).get('/health').expect(200);
@@ -116,7 +118,7 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
     const rep = new FakeReporter();
     const m = memoryStream();
     const badApp = createApp(resolveDeps({ env, pool: broken, log: createLogger({ level: 'info', destination: m.stream }), reporter: rep }));
-    const res = await request(badApp).post('/api/auth/otp/request').send({ phone: '+919800000750' }).expect(500);
+    const res = await request(badApp).post('/api/auth/login').send({ email: 'someone@test.local', password: 'whatever-12345' }).expect(500);
     await broken.end().catch(() => {});
     expect(res.body.error).toBe('INTERNAL');
     expect(JSON.stringify(res.body)).not.toMatch(/ECONNREFUSED|127\.0\.0\.1|9198000/);
@@ -124,7 +126,7 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
     expect(rep.captured).toHaveLength(1);
     expect(rep.captured[0]!.ctx?.reqId).toBe(res.body.requestId);
     expect(m.text()).toContain('unhandled error');
-    expect(m.text()).not.toContain('919800000750');
+    expect(m.text()).not.toContain('whatever-12345');
   });
 
   it('/ready says 200 when the database answers and 503 (without details) when it does not', async () => {
@@ -162,8 +164,8 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
     it('platform-wide cost is for Wayne E Solutions staff only', async () => {
       await request(app).get('/api/admin/costs').set(auth()).expect(403);
       await owner.query('UPDATE users SET is_wes_admin = true');
-      const r = await request(app).post('/api/auth/otp/request').send({ phone });
-      const wes = (await request(app).post('/api/auth/otp/verify').send({ phone, code: r.body.devCode })).body.accessToken;
+      const r = await ensureUser(app, phone);
+      const wes = (await tokenFor(app, phone)).body.accessToken;
       const all = (await request(app).get('/api/admin/costs?days=30').set('Authorization', `Bearer ${wes}`).expect(200)).body;
       expect(all.totalUsd).toBe(1);
       expect(all.totalCalls).toBe(3);

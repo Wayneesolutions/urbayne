@@ -19,6 +19,7 @@ import { RedisSessions } from '../src/lib/sessions.js';
 import { processRun } from '../src/modules/calls/runner.js';
 import { sendShiftReminders } from '../src/modules/ops/routes.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor } from './auth-helper.js';
 
 const OWNER_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
@@ -51,7 +52,7 @@ run('Redis: rate limits, sessions, queues, row locking (integration)', () => {
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
     await newRedis().flushdb();
-    await owner.query('TRUNCATE audit_log, shift_assignments, shifts, survey_responses, interactions, campaign_runs, consents, contacts, content_items, geo_areas, memberships, tenants, otp_codes, users CASCADE');
+    await owner.query('TRUNCATE audit_log, shift_assignments, shifts, survey_responses, interactions, campaign_runs, consents, contacts, content_items, geo_areas, memberships, tenants, users CASCADE');
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
   // Rate-limit counters are per IP and every test here is the same IP, so start each test with clean counters.
@@ -82,7 +83,7 @@ run('Redis: rate limits, sessions, queues, row locking (integration)', () => {
       const s1 = server(), s2 = server();
       const codes: number[] = [];
       for (let i = 0; i < 22; i++) {
-        const res = await request(i % 2 ? s1.app : s2.app).post('/api/auth/otp/request').send({ phone: `+9190000${String(10000 + i)}` });
+        const res = await ensureUser(i % 2 ? s1.app : s2.app, `+9190000${String(10000 + i)}`);
         codes.push(res.status);
       }
       expect(codes.slice(0, 20).every((c) => c === 200)).toBe(true);
@@ -94,8 +95,8 @@ run('Redis: rate limits, sessions, queues, row locking (integration)', () => {
     it('are shared by servers; logout and logout-all end them for real', async () => {
       const a = server(), b = server();
       const login = async (phone: string) => {
-        const r = await request(a.app).post('/api/auth/otp/request').send({ phone }).expect(200);
-        return (await request(a.app).post('/api/auth/otp/verify').send({ phone, code: r.body.devCode }).expect(200)).body as { accessToken: string; refreshToken: string };
+        const r = await ensureUser(a.app, phone).expect(200);
+        return (await tokenFor(a.app, phone).expect(200)).body as { accessToken: string; refreshToken: string };
       };
       const t1 = await login('+919800000401');
       // Server B has never seen this login, yet accepts its refresh token.
@@ -128,8 +129,8 @@ run('Redis: rate limits, sessions, queues, row locking (integration)', () => {
     beforeAll(async () => {
       const s = server();
       const phone = '+919800000501';
-      const r = await request(s.app).post('/api/auth/otp/request').send({ phone });
-      const token = (await request(s.app).post('/api/auth/otp/verify').send({ phone, code: r.body.devCode })).body.accessToken as string;
+      const r = await ensureUser(s.app, phone);
+      const token = (await tokenFor(s.app, phone)).body.accessToken as string;
       auth = { Authorization: `Bearer ${token}` };
       tenantId = (await request(s.app).post('/api/tenants').set(auth).send({ raceType: 'assembly', seatCode: 'Q-1', electionDate: '2027-02-20', campaignName: 'Queue Test', pollCloseAt: '2027-02-20T18:00:00+05:30' })).body.id;
       await owner.query('UPDATE tenants SET is_demo = true WHERE id = $1', [tenantId]);

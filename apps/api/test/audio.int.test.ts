@@ -7,6 +7,7 @@ import { MemoryStore } from '../src/lib/storage.js';
 import { bodyHash, serveAudio } from '../src/modules/audio/audio.js';
 import { answer } from '../src/modules/assistant/answer.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor } from './auth-helper.js';
 
 const OWNER_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
@@ -63,13 +64,13 @@ run('Recorded audio and fonts (integration)', () => {
   const area = () => request(app).get(`/api/public/voice-test/areas/${areaId}?locale=pa`);
 
   async function signIn(a: typeof app, phone: string) {
-    const r = await request(a).post('/api/auth/otp/request').send({ phone });
-    return (await request(a).post('/api/auth/otp/verify').send({ phone, code: r.body.devCode })).body.accessToken as string;
+    const r = await ensureUser(a, phone);
+    return (await tokenFor(a, phone)).body.accessToken as string;
   }
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
-    await owner.query('TRUNCATE audit_log, audio_clips, content_items, stored_files, geo_areas, memberships, tenants, otp_codes, users CASCADE');
+    await owner.query('TRUNCATE audit_log, audio_clips, content_items, stored_files, geo_areas, memberships, tenants, users CASCADE');
     pool = new pg.Pool({ connectionString: APP_URL });
     app = createApp({ env: testEnv(), pool, store });
     caApp = createApp({ env: testEnv({ DEPLOY_REGION: 'CA' }), pool, store });

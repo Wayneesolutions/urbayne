@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { createApp } from '../src/app.js';
 import { purgeDueTenants } from '../src/modules/privacy/purge.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor } from './auth-helper.js';
 import { resolveDeps } from '../src/app.js';
 
 const OWNER_URL = process.env.TEST_DATABASE_URL;
@@ -25,12 +26,12 @@ run('Privacy: consent evidence and data deletion (integration)', () => {
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
-    await owner.query('TRUNCATE audit_log, data_purges, suppressions, finance_entries, assistant_questions, door_visits, signs, shift_assignments, survey_responses, interactions, campaign_runs, consents, contacts, content_items, geo_areas, memberships, tenants, otp_codes, users CASCADE');
+    await owner.query('TRUNCATE audit_log, data_purges, suppressions, finance_entries, assistant_questions, door_visits, signs, shift_assignments, survey_responses, interactions, campaign_runs, consents, contacts, content_items, geo_areas, memberships, tenants, users CASCADE');
     pool = new pg.Pool({ connectionString: APP_URL });
     app = createApp({ env, pool, now: () => clock });
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    const r = await request(app).post('/api/auth/otp/request').send({ phone: '+919800000601' });
-    token = (await request(app).post('/api/auth/otp/verify').send({ phone: '+919800000601', code: r.body.devCode })).body.accessToken;
+    const r = await ensureUser(app, '+919800000601');
+    token = (await tokenFor(app, '+919800000601')).body.accessToken;
     tenantId = (await request(app).post('/api/tenants').set(auth()).send({ raceType: 'assembly', seatCode: 'PV-1', electionDate: '2027-02-20', campaignName: 'Privacy Test' })).body.id;
   });
   afterAll(async () => { vi.restoreAllMocks(); await pool.end(); await owner.end(); });

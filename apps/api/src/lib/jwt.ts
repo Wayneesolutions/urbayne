@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 
-export interface AccessClaims { sub: string; wes?: boolean }
+/** wes: platform staff. sa: super admin. mcp: the person must choose a new password before doing anything else. */
+export interface AccessClaims { sub: string; wes?: boolean; sa?: boolean; mcp?: boolean }
 
 // The algorithm is pinned on both sides: a token cannot choose how it is checked ("none", RS256-as-HMAC, ...).
 const ALG = 'HS256' as const;
@@ -24,7 +25,7 @@ function verifyWith(token: string, secrets: string | string[]) {
 export function verifyAccess(token: string, secrets: string | string[]): AccessClaims {
   const p = verifyWith(token, secrets);
   if (typeof p === 'string' || !p.sub) throw new Error('Invalid token');
-  return { sub: p.sub, wes: Boolean(p.wes) };
+  return { sub: p.sub, wes: Boolean(p.wes), sa: Boolean(p.sa), mcp: Boolean(p.mcp) };
 }
 
 export function verifyRefresh(token: string, secrets: string | string[]): { sub: string; sid: string } {

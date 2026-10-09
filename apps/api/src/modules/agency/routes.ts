@@ -5,9 +5,10 @@ import { z } from 'zod';
 import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { schema, withTenant } from '@cs/db';
 import { HttpError, ah } from '../../lib/http.js';
-import { decrypt, encrypt, hashPhone, normalisePhone } from '../../lib/crypto.js';
+import { findOrCreateAccount } from '../../lib/accounts.js';
+import { sendResetLink } from '../../routes/auth.js';
 import { rateLimit } from '../../lib/rate-limit.js';
-import { maskPhone, now, shortCode } from '../../lib/util.js';
+import { now, shortCode } from '../../lib/util.js';
 import { loadTenant, requireRole, requireUser } from '../../middleware/auth.js';
 import type { Deps } from '../../types.js';
 
@@ -35,18 +36,19 @@ export function agencyAdminRoutes(deps: Deps) {
   }));
 
   r.post('/agencies', ah(async (req, res) => {
-    const b = brand.extend({ name: z.string().min(2).max(120), slug: z.string().regex(/^[a-z0-9-]{3,40}$/), adminPhone: z.string(), adminName: z.string().max(120).optional() }).strict().parse(req.body);
-    const phone = normalisePhone(b.adminPhone);
-    const phoneHash = hashPhone(phone, env.PHONE_HASH_KEY);
+    const b = brand.extend({ name: z.string().min(2).max(120), slug: z.string().regex(/^[a-z0-9-]{3,40}$/), adminEmail: z.string().email().max(254), adminName: z.string().max(120).optional(), adminPassword: z.string().max(256).optional() }).strict().parse(req.body);
     try {
+      let invite: typeof schema.users.$inferSelect | null = null;
       const out = await withTenant(pool, null, async (db) => {
-        let [u] = await db.select().from(schema.users).where(eq(schema.users.phoneHash, phoneHash));
-        if (!u) [u] = await db.insert(schema.users).values({ phoneHash, phoneEnc: encrypt(phone, env.PHONE_ENC_KEY), name: b.adminName }).returning();
+        const acct = await findOrCreateAccount(deps, db, { email: b.adminEmail, name: b.adminName, password: b.adminPassword });
+        const u = acct.user;
+        if (acct.invite) invite = u;
         const [a] = await db.insert(schema.agencies).values({ name: b.name, slug: b.slug, brandName: b.brandName ?? null, primaryColor: b.primaryColor ?? null, supportEmail: b.supportEmail ?? null, createdBy: req.user!.id }).returning();
-        await db.insert(schema.agencyMembers).values({ agencyId: a!.id, userId: u!.id, role: 'admin' });
+        await db.insert(schema.agencyMembers).values({ agencyId: a!.id, userId: u.id, role: 'admin' });
         await db.insert(schema.auditLog).values({ actorId: req.user!.id, action: 'create_agency', entity: 'agency', entityId: a!.id, after: { name: a!.name, slug: a!.slug }, ip: req.ip });
         return a!;
       });
+      if (invite) { try { await sendResetLink(deps, invite, 'invite'); } catch (e) { deps.log.error({ err: e }, 'could not send the invite email'); } }
       res.status(201).json(out);
     } catch (e: any) {
       if ((e?.cause ?? e)?.code === '23505') throw new HttpError(409, 'SLUG_TAKEN', 'That agency address is already in use.');
@@ -113,7 +115,7 @@ export function agencyRoutes(deps: Deps) {
     const out = await withTenant(pool, null, async (db) => {
       const [a] = await db.select().from(schema.agencies).where(eq(schema.agencies.id, id));
       const ms = await db.select({ m: schema.agencyMembers, u: schema.users }).from(schema.agencyMembers).innerJoin(schema.users, eq(schema.users.id, schema.agencyMembers.userId)).where(eq(schema.agencyMembers.agencyId, id));
-      return { ...a!, role: (req as any).agencyRole as string, members: ms.map(({ m, u }) => ({ userId: u.id, name: u.name, phone: maskPhone(decrypt(u.phoneEnc, env.PHONE_ENC_KEY)), role: m.role })) };
+      return { ...a!, role: (req as any).agencyRole as string, members: ms.map(({ m, u }) => ({ userId: u.id, name: u.name, email: u.email, role: m.role })) };
     });
     res.json(out);
   }));
@@ -127,17 +129,18 @@ export function agencyRoutes(deps: Deps) {
   }));
 
   r.post('/:agencyId/members', asMember(true), ah(async (req, res) => {
-    const b = z.object({ phone: z.string(), name: z.string().max(120).optional(), role: z.enum(['admin', 'staff']).default('staff') }).strict().parse(req.body);
-    const phone = normalisePhone(b.phone);
-    const phoneHash = hashPhone(phone, env.PHONE_HASH_KEY);
+    const b = z.object({ email: z.string().email().max(254), name: z.string().max(120).optional(), password: z.string().max(256).optional(), role: z.enum(['admin', 'staff']).default('staff') }).strict().parse(req.body);
+    let invite: typeof schema.users.$inferSelect | null = null;
     const out = await withTenant(pool, null, async (db) => {
-      let [u] = await db.select().from(schema.users).where(eq(schema.users.phoneHash, phoneHash));
-      if (!u) [u] = await db.insert(schema.users).values({ phoneHash, phoneEnc: encrypt(phone, env.PHONE_ENC_KEY), name: b.name }).returning();
-      const [m] = await db.insert(schema.agencyMembers).values({ agencyId: req.params.agencyId!, userId: u!.id, role: b.role }).onConflictDoNothing().returning();
+      const acct = await findOrCreateAccount(deps, db, { email: b.email, name: b.name, password: b.password });
+      const u = acct.user;
+      if (acct.invite) invite = u;
+      const [m] = await db.insert(schema.agencyMembers).values({ agencyId: req.params.agencyId!, userId: u.id, role: b.role }).onConflictDoNothing().returning();
       if (!m) throw new HttpError(409, 'ALREADY_MEMBER');
-      await db.insert(schema.auditLog).values({ actorId: req.user!.id, action: 'agency_add_member', entity: 'agency', entityId: req.params.agencyId!, after: { userId: u!.id, role: b.role }, ip: req.ip });
-      return { userId: u!.id, name: u!.name, role: b.role };
+      await db.insert(schema.auditLog).values({ actorId: req.user!.id, action: 'agency_add_member', entity: 'agency', entityId: req.params.agencyId!, after: { userId: u.id, role: b.role }, ip: req.ip });
+      return { userId: u.id, name: u.name, email: u.email, role: b.role };
     });
+    if (invite) { try { await sendResetLink(deps, invite, 'invite'); } catch (e) { deps.log.error({ err: e }, 'could not send the invite email'); } }
     res.status(201).json(out);
   }));
 

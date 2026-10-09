@@ -6,6 +6,7 @@ import { createApp } from '../src/app.js';
 import { roadTrip, MAX_ROAD_STOPS } from '../src/lib/routing.js';
 import { dashboardCsp } from '../src/lib/security.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor } from './auth-helper.js';
 
 const OWNER_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
@@ -62,12 +63,12 @@ run('Maps and routes (integration)', () => {
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
-    await owner.query('TRUNCATE audit_log, signs, turfs, geo_areas, memberships, tenants, otp_codes, users CASCADE');
+    await owner.query('TRUNCATE audit_log, signs, turfs, geo_areas, memberships, tenants, users CASCADE');
     pool = new pg.Pool({ connectionString: APP_URL });
     app = createApp({ env: testEnv({ ROUTING_BASE_URL: 'https://osrm.example', MAP_TILE_URL: 'https://tiles.example/{z}/{x}/{y}.png' }), pool, fetch: ((...a: unknown[]) => (osrmFetch as any)(...a)) as typeof fetch });
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    const r = await request(app).post('/api/auth/otp/request').send({ phone: '+919800001401' });
-    token = (await request(app).post('/api/auth/otp/verify').send({ phone: '+919800001401', code: r.body.devCode })).body.accessToken;
+    const r = await ensureUser(app, '+919800001401');
+    token = (await tokenFor(app, '+919800001401')).body.accessToken;
     tenantId = (await request(app).post('/api/tenants').set(auth()).send({ raceType: 'assembly', seatCode: 'MAP-1', electionDate: '2027-02-20', campaignName: 'Map Test' })).body.id;
     await request(app).patch(`/api/tenants/${tenantId}/settings`).set(auth()).send({ officeLat: 49.9, officeLng: -97.1 }).expect(200);
   });

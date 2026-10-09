@@ -9,6 +9,7 @@ import { buildInvoice } from '../src/modules/service/admin.js';
 import { guessCategory } from '../src/modules/service/categories.js';
 import { dueDate } from '../src/modules/service/tickets.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor, emailFor } from './auth-helper.js';
 
 describe('categories and dates', () => {
   it('guesses a category from English, Hinglish, Punjabi and Hindi words', () => {
@@ -62,15 +63,15 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
   const q = async (sql: string, args: unknown[] = []) => (await owner.query(sql, args)).rows;
   const svc = (path: string) => `/api/t/${tenant}/service${path}`;
   async function login(phone: string) {
-    const r = await request(app).post('/api/auth/otp/request').send({ phone });
-    return (await request(app).post('/api/auth/otp/verify').send({ phone, code: r.body.devCode })).body.accessToken as string;
+    const r = await ensureUser(app, phone);
+    return (await tokenFor(app, phone)).body.accessToken as string;
   }
   const waitFor = async (check: () => Promise<boolean>, ms = 4000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await check()) return true; await new Promise((r) => setTimeout(r, 50)); } return false; };
   const newTicket = (who: string, body: object) => request(app).post(svc('/tickets')).set(as(who)).send({ title: 'Test request', ...body });
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
-    await owner.query('TRUNCATE tenants, users, otp_codes CASCADE');
+    await owner.query('TRUNCATE tenants, users CASCADE');
     pool = new pg.Pool({ connectionString: APP_URL });
     deps = resolveDeps({ env, pool });
     app = createApp(deps);
@@ -85,7 +86,7 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
     areaA = (await request(app).post(`/api/t/${tenant}/geo`).set(as('owner')).send({ parentId: rootArea, level: 'locality', nameEn: 'Model Town', code: 'MT12', namePa: 'ਮਾਡਲ ਟਾਊਨ' })).body.id;
     areaB = (await request(app).post(`/api/t/${tenant}/geo`).set(as('owner')).send({ parentId: rootArea, level: 'locality', nameEn: 'Dugri', code: 'DG3' })).body.id;
     for (const [who, phone, role] of [['staff1', '+919800002002', 'service_staff'], ['staff2', '+919800002003', 'service_staff'], ['worker', '+919800002004', 'field_worker']] as const) {
-      await request(app).post(`/api/t/${tenant}/members`).set(as('owner')).send({ phone, name: who, role }).expect(201);
+      await request(app).post(`/api/t/${tenant}/members`).set(as('owner')).send({ email: emailFor(phone), phone, name: who, role }).expect(201);
       tok[who] = await login(phone);
       id[who] = (jwt.decode(tok[who]!) as { sub: string }).sub;
     }
