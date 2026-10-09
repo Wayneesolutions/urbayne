@@ -39,13 +39,13 @@ run('Redis: rate limits, sessions, queues, row locking (integration)', () => {
   const newRedis = () => { const r = new Redis(REDIS_URL!, { maxRetriesPerRequest: null }); conns.push(r); return r; };
 
   /** One "server": its own database pool, Redis connection and queue handle, like a separate machine. */
-  function server() {
+  function server(over: Record<string, string> = {}) {
     const pool = new pg.Pool({ connectionString: APP_URL, max: 6 });
     pools.push(pool);
     const redis = newRedis();
     const queues = createQueues(redis);
     queuesList.push(queues);
-    const deps = resolveDeps({ env, pool, redis, queues, now: clock });
+    const deps = resolveDeps({ env: Object.keys(over).length ? testEnv(over) : env, pool, redis, queues, now: clock });
     return { deps, app: createApp(deps), queues };
   }
 
@@ -79,15 +79,15 @@ run('Redis: rate limits, sessions, queues, row locking (integration)', () => {
       expect(await b.hit('k', 400)).toBe(1);
     });
 
-    it('one IP cannot dodge the OTP limit by spreading requests over two servers', async () => {
-      const s1 = server(), s2 = server();
+    it('one IP cannot dodge the sign-in limit by spreading attempts over two servers', async () => {
+      const s1 = server({ LOGIN_MAX_PER_IP: '20' }), s2 = server({ LOGIN_MAX_PER_IP: '20' });
       const codes: number[] = [];
       for (let i = 0; i < 22; i++) {
-        const res = await ensureUser(i % 2 ? s1.app : s2.app, `+9190000${String(10000 + i)}`);
+        const res = await request(i % 2 ? s1.app : s2.app).post('/api/auth/login').send({ email: `nobody${i}@test.local`, password: 'not-a-password-1' });
         codes.push(res.status);
       }
-      expect(codes.slice(0, 20).every((c) => c === 200)).toBe(true);
-      expect(codes.slice(20)).toEqual([429, 429]);
+      expect(codes.slice(0, 20).every((c) => c === 401)).toBe(true); // wrong, but allowed to try
+      expect(codes.slice(20)).toEqual([429, 429]); // the 21st and 22nd attempt from this address are refused by either server
     });
   });
 
