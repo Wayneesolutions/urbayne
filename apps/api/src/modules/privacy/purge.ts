@@ -3,6 +3,7 @@ import { schema, withTenant } from '@cs/db';
 import { VapiVoice } from '@cs/channels';
 import { channelEnv, now } from '../../lib/util.js';
 import { scrubTicket } from '../service/tickets.js';
+import { deleteFiles } from '../files/files.js';
 import type { Deps, TenantRow } from '../../types.js';
 
 type Db = Parameters<Parameters<typeof withTenant>[2]>[0];
@@ -85,14 +86,20 @@ export async function purgeTenantData(deps: Deps, tenantId: string, opts: PurgeO
 
     const transcripts = await db.update(schema.interactions).set({ transcript: null, contactId: null }).where(sql`${schema.interactions.transcript} IS NOT NULL OR ${schema.interactions.contactId} IS NOT NULL`).returning({ id: schema.interactions.id });
     const questions = await db.delete(schema.assistantQuestions).returning({ id: schema.assistantQuestions.id });
-    const notes = await db.update(schema.doorVisits).set({ note: null, household: null, contactId: null }).returning({ id: schema.doorVisits.id });
+    // door_visits must keep a contact or a household (CHECK), so the address text is replaced, not cleared.
+    const notes = await db.update(schema.doorVisits).set({ note: null, household: REMOVED, contactId: null }).returning({ id: schema.doorVisits.id });
     const signs = await db.update(schema.signs).set({ address: REMOVED, lat: null, lng: null, contactId: null }).returning({ id: schema.signs.id });
     const [consentCount] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.consents);
     const openTickets = await db.select({ id: schema.tickets.id }).from(schema.tickets).where(isNull(schema.tickets.scrubbedAt));
     for (const tk of openTickets) await scrubTicket(db, tk.id, now(deps));
     const contacts = await db.delete(schema.contacts).returning({ id: schema.contacts.id }); // cascades consents and shift assignments
+    // Roll copies hold other people's details: the households, the import records and the uploaded copies all go.
+    const households = await db.delete(schema.households).returning({ id: schema.households.id });
+    await db.delete(schema.rollImports);
+    const rollFiles = await deleteFiles(deps, db, eq(schema.storedFiles.purpose, 'roll_proof'));
 
     const counts = {
+      households: households.length, rollFiles,
       contacts: contacts.length, consents: consentCount?.n ?? 0, interactionsScrubbed: transcripts.length,
       assistantQuestions: questions.length, doorVisitsScrubbed: notes.length, signAddresses: signs.length, tickets: openTickets.length,
     };

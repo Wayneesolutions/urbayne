@@ -1,6 +1,23 @@
-import type { RegionConfig } from './types.js';
+import type { ProvinceRules, RegionConfig } from './types.js';
 
 const min = (h: number, m = 0) => h * 60 + m;
+
+export const CA_PROVINCES: Record<string, ProvinceRules> = {
+  MB: {
+    code: 'MB',
+    name: 'Manitoba',
+    electionBody: 'Elections Manitoba',
+    electionBodyUrl: 'https://www.electionsmanitoba.ca',
+    acts: ['The Elections Act (Manitoba)', 'The Elections Finances Act (Manitoba)'],
+    // Fixed-date elections: the first Tuesday in October in the fourth year after the last one (5 October 2027). Confirm with Elections Manitoba.
+    nextGeneral: 'October 2027 (fixed date, expected 5 October 2027)',
+    spendLimitMinor: null,
+    contributionLimitMinor: null,
+    silenceWindowHours: null,
+    expenseCategories: ['Advertising', 'Signs', 'Printing', 'Office', 'Events', 'Digital and phone', 'Professional fees', 'Other'],
+    confirmWithCounsel: ['spendLimitMinor', 'contributionLimitMinor', 'silenceWindowHours', 'expenseCategories'],
+  },
+};
 
 export const CA: RegionConfig = {
   code: 'CA',
@@ -27,6 +44,9 @@ export const CA: RegionConfig = {
       en: 'This is an automated call on behalf of',
       pa: 'ਇਹ ਇੱਕ ਆਟੋਮੈਟਿਕ ਕਾਲ ਹੈ, ਜੋ ਇਹਨਾਂ ਵੱਲੋਂ ਹੈ',
       hi: 'यह एक स्वचालित कॉल है, जो इनकी ओर से है',
+      // Draft translations: confirm wording with counsel and a native speaker (see confirmWithCounsel).
+      fr: "Ceci est un appel automatisé de la part de",
+      tl: 'Ito ay isang awtomatikong tawag mula sa',
     },
   },
   automatedDonationAsk: 'express_consent_only',

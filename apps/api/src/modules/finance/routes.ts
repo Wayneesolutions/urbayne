@@ -1,11 +1,17 @@
 import '../../types.js';
 import { Router } from 'express';
 import { z } from 'zod';
-import { and, asc, desc, eq, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lte, ne, sql } from 'drizzle-orm';
 import { schema, withTenant } from '@cs/db';
 import { HttpError, ah } from '../../lib/http.js';
 import { loadTenant, requireRole } from '../../middleware/auth.js';
 import { contributionFlags, csvCell, expenseFlags, normaliseParty } from './rules.js';
+import { filingFormat, filingFormatsFor, getProvince } from '@cs/regions';
+import writeExcelFile from 'write-excel-file/node';
+import { BANK_MODES, matchLines, parseBankCsv, type EntryLite } from './reconcile.js';
+import { renderFiling } from './filing.js';
+import { deleteFiles, loadFile, saveFile } from '../files/files.js';
+import { rawUpload, sendBlob, uploadName } from '../files/routes.js';
 import type { Deps, TenantRow } from '../../types.js';
 
 type Db = Parameters<Parameters<typeof withTenant>[2]>[0];
@@ -42,7 +48,7 @@ export function financeRoutes(deps: Deps) {
         currency: t.region === 'IN' ? 'INR' : 'CAD', limitMinor: t.spendLimitMinor, contributionLimitMinor: t.contributionLimitMinor,
         ...tot, share: t.spendLimitMinor ? tot.expense / t.spendLimitMinor : null,
         byCategory: byCat.map((c) => ({ ...c, minor: Number(c.minor) })), lockedUntil: t.financeLockedUntil, lastSignoff: signoff ?? null,
-        categories: t.region === 'IN' ? IN_CATEGORIES : CA_CATEGORIES,
+        categories: getProvince(t.region, t.province)?.expenseCategories ?? (t.region === 'IN' ? IN_CATEGORIES : CA_CATEGORIES),
       };
     });
     res.json(out);
@@ -103,7 +109,8 @@ export function financeRoutes(deps: Deps) {
       }).returning();
       await db.update(schema.tenants).set({ financeLockedUntil: b.periodTo, updatedAt: new Date() }).where(eq(schema.tenants.id, t.id));
       await db.insert(schema.auditLog).values({ tenantId: t.id, actorId: req.user!.id, action: 'finance_signoff', entity: 'finance', entityId: s!.id, after: s, ip: req.ip });
-      return s;
+      // Not a block: the agent may sign off with open items, but is told what the bank statements disagree on.
+      return { ...s!, reconciliation: await reconciliation(db) };
     });
     res.status(201).json(out);
   }));
@@ -119,19 +126,202 @@ export function financeRoutes(deps: Deps) {
         .where(and(eq(schema.financeEntries.kind, kind), lte(schema.financeEntries.entryDate, s.periodTo))).orderBy(asc(schema.financeEntries.entryDate));
       return { s, list };
     });
-    const money = (m: number | null) => (m == null ? '' : (m / 100).toFixed(2));
-    const head = kind === 'expense'
-      ? ['Date', 'Category', 'Description', 'Paid to', 'Address', 'Bill / invoice no.', 'Quantity', 'Rate', 'Amount', 'Mode', 'Source', 'Flags']
-      : ['Date', 'Receipt no.', 'Received from', 'Address', 'Description', 'Amount', 'Mode', 'Eligibility confirmed', 'Flags'];
-    const lines = rows.list.map((e) => (kind === 'expense'
-      ? [e.entryDate, e.category, e.description, e.partyName, e.partyAddress, e.billNo, e.quantity, money(e.unitRateMinor), money(e.amountMinor), e.paymentMode, e.source, e.flags.map((f) => f.code).join(' ')]
-      : [e.entryDate, e.receiptNo, e.partyName, e.partyAddress, e.description, money(e.amountMinor), e.paymentMode, e.eligibleAttested ? 'yes' : 'no', e.flags.map((f) => f.code).join(' ')]).map(csvCell).join(','));
-    const note = `# ${t.campaignName} — ${kind} register up to ${rows.s.periodTo}, signed off ${rows.s.signedAt.toISOString()}. Check the column layout against the format your election authority requires.`;
-    res.type('text/csv').setHeader('Content-Disposition', `attachment; filename="${kind}-register-${rows.s.periodTo}.csv"`);
-    res.send([note, head.map(csvCell).join(','), ...lines].join('\n'));
+    const fmt = filingFormat(String(req.query.format ?? (kind === 'expense' ? 'register-expense' : 'register-contribution')), t.region, kind, t.province);
+    if (!fmt) throw new HttpError(422, 'FORMAT_NOT_AVAILABLE', 'That layout is not available for this campaign. See /finance/formats.');
+    const table = renderFiling(fmt, rows.list);
+    const note = `# ${t.campaignName} — ${fmt.title}, ${kind} entries up to ${rows.s.periodTo}, signed off ${rows.s.signedAt.toISOString()}. Check the column layout against the form your election authority requires.`;
+    const draft = fmt.confirmed ? null : `# DRAFT LAYOUT: not yet checked against the official form of ${fmt.authority}. Compare it with their form before filing.`;
+    const base = `${kind}-${fmt.id}-${rows.s.periodTo}`;
+    if (req.query.as === 'xlsx') {
+      const cells = (v: string | number | null) => ({ value: v == null ? '' : v });
+      const sheet = [[cells(note)], ...(draft ? [[cells(draft)]] : []), table.head.map((h) => ({ value: h, fontWeight: 'bold' as const })), ...table.rows.map((r) => r.map(cells))];
+      const buf = await writeExcelFile(sheet as never).toBuffer();
+      res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').setHeader('Content-Disposition', `attachment; filename="${base}.xlsx"`);
+      return res.send(buf);
+    }
+    res.type('text/csv').setHeader('Content-Disposition', `attachment; filename="${base}.csv"`);
+    res.send([note, ...(draft ? [draft] : []), table.head.map(csvCell).join(','), ...table.rows.map((r) => r.map(csvCell).join(','))].join('\n'));
+  }));
+
+  /** The layouts this campaign can export its registers in, and whether each has been checked against the official form. */
+  r.get('/formats', requireRole(...SIGNERS), (req, res) => {
+    const t = req.tenant!;
+    const pick = (kind: 'expense' | 'contribution') => filingFormatsFor(t.region, kind, t.province).map((f) => ({ id: f.id, title: f.title, authority: f.authority, confirmed: f.confirmed, default: f.id.startsWith('register-') }));
+    res.json({ expense: pick('expense'), contribution: pick('contribution') });
+  });
+
+  // ----- receipt photos -----
+  /** Attaches a receipt (photo or PDF) to an entry. The request body is the file itself. Replaces an earlier one. */
+  r.post('/entries/:id/receipt', requireRole(...WRITERS), rawUpload(9 * 1024 * 1024), ah(async (req, res) => {
+    const t = req.tenant!;
+    const id = z.string().uuid().parse(req.params.id);
+    const out = await withTenant(pool, t.id, async (db) => {
+      const [e] = await db.select().from(schema.financeEntries).where(eq(schema.financeEntries.id, id));
+      if (!e) throw new HttpError(404, 'NOT_FOUND');
+      if (t.financeLockedUntil && e.entryDate <= t.financeLockedUntil) throw new HttpError(423, 'PERIOD_LOCKED', `Entries up to ${t.financeLockedUntil} are locked.`);
+      const f = await saveFile(deps, db, t.id, req.user!.id, 'receipt', Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0), uploadName(req));
+      await db.update(schema.financeEntries).set({ receiptFileId: f.id, updatedAt: new Date() }).where(eq(schema.financeEntries.id, id));
+      if (e.receiptFileId) await deleteFiles(deps, db, eq(schema.storedFiles.id, e.receiptFileId));
+      await db.insert(schema.auditLog).values({ tenantId: t.id, actorId: req.user!.id, action: 'attach_receipt', entity: 'finance_entry', entityId: id, after: { fileId: f.id, sha256: f.sha256, bytes: f.bytes }, ip: req.ip });
+      return { fileId: f.id, contentType: f.contentType, bytes: f.bytes, sha256: f.sha256 };
+    });
+    res.status(201).json(out);
+  }));
+
+  r.get('/entries/:id/receipt', ah(async (req, res) => {
+    const id = z.string().uuid().parse(req.params.id);
+    const { file, body } = await withTenant(pool, req.tenant!.id, async (db) => {
+      const [e] = await db.select({ f: schema.financeEntries.receiptFileId }).from(schema.financeEntries).where(eq(schema.financeEntries.id, id));
+      if (!e?.f) throw new HttpError(404, 'NO_RECEIPT');
+      return loadFile(deps, db, e.f, 'receipt');
+    });
+    sendBlob(res, body, file.contentType, file.originalName);
+  }));
+
+  // ----- bank statement reconciliation -----
+  /** Uploads a bank statement (CSV, the request body) and pairs its lines with the register. */
+  r.post('/bank-statements', requireRole('owner', 'finance_agent'), rawUpload(6 * 1024 * 1024), ah(async (req, res) => {
+    const t = req.tenant!;
+    const label = z.string().min(1).max(120).default('Bank statement').parse(req.query.label || undefined);
+    const buf = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    const out = await withTenant(pool, t.id, async (db) => {
+      const f = await saveFile(deps, db, t.id, req.user!.id, 'bank_statement', buf, uploadName(req));
+      const parsed = parseBankCsv(buf.toString('utf8'), t.region === 'IN' ? 'dmy' : 'mdy');
+      if (!parsed.lines.length) throw new HttpError(422, 'STATEMENT_NOT_READABLE', `No transactions could be read (${parsed.skipped[0]?.reason ?? 'empty'}). Export the statement as CSV with a Date column and Debit/Credit or Amount columns.`);
+      const [st] = await db.insert(schema.bankStatements).values({ tenantId: t.id, fileId: f.id, label, periodFrom: parsed.periodFrom, periodTo: parsed.periodTo, lineCount: parsed.lines.length, uploadedBy: req.user!.id }).returning();
+      const rows = await db.insert(schema.bankLines).values(parsed.lines.map((l) => ({
+        tenantId: t.id, statementId: st!.id, lineNo: l.lineNo, lineDate: l.date, description: l.description, reference: l.reference, direction: l.direction, amountMinor: l.amountMinor,
+      }))).returning();
+      const entries = await unmatchedEntries(db);
+      const m = matchLines(rows.map((l) => ({ id: l.id, date: l.lineDate, direction: l.direction, amountMinor: l.amountMinor, description: l.description, reference: l.reference })), entries);
+      let matched = 0, suggested = 0;
+      for (const l of rows) {
+        const x = m.get(l.id)!;
+        if (x.status === 'unmatched') continue;
+        if (x.status === 'matched') matched++; else suggested++;
+        await db.update(schema.bankLines).set({ matchStatus: x.status, matchedEntryId: x.status === 'matched' ? x.entryId : null, matchedAt: x.status === 'matched' ? new Date() : null }).where(eq(schema.bankLines.id, l.id));
+      }
+      await db.insert(schema.auditLog).values({ tenantId: t.id, actorId: req.user!.id, action: 'upload_bank_statement', entity: 'bank_statement', entityId: st!.id, after: { lines: rows.length, matched, suggested, sha256: f.sha256 }, ip: req.ip });
+      return { id: st!.id, label, periodFrom: parsed.periodFrom, periodTo: parsed.periodTo, lines: rows.length, matched, suggested, unmatched: rows.length - matched - suggested, skipped: parsed.skipped };
+    });
+    res.status(201).json(out);
+  }));
+
+  r.get('/bank-statements', ah(async (req, res) => {
+    res.json(await withTenant(pool, req.tenant!.id, async (db) => {
+      const sts = await db.select().from(schema.bankStatements).orderBy(desc(schema.bankStatements.createdAt));
+      const counts = await db.select({ s: schema.bankLines.statementId, status: schema.bankLines.matchStatus, n: sql<number>`count(*)::int` }).from(schema.bankLines).groupBy(schema.bankLines.statementId, schema.bankLines.matchStatus);
+      return sts.map((s) => ({ ...s, counts: Object.fromEntries(counts.filter((c) => c.s === s.id).map((c) => [c.status, c.n])) }));
+    }));
+  }));
+
+  /** The lines of one statement, each with the entry it is matched to, or the entries it might be. */
+  r.get('/bank-statements/:id', ah(async (req, res) => {
+    const id = z.string().uuid().parse(req.params.id);
+    res.json(await withTenant(pool, req.tenant!.id, async (db) => {
+      const [st] = await db.select().from(schema.bankStatements).where(eq(schema.bankStatements.id, id));
+      if (!st) throw new HttpError(404, 'NOT_FOUND');
+      const lines = await db.select().from(schema.bankLines).where(eq(schema.bankLines.statementId, id)).orderBy(asc(schema.bankLines.lineNo));
+      const free = await unmatchedEntries(db);
+      const used = lines.map((l) => l.matchedEntryId).filter((x): x is string => Boolean(x));
+      const matchedEntries = used.length ? await db.select().from(schema.financeEntries).where(inArray(schema.financeEntries.id, used)) : [];
+      const sugg = matchLines(lines.filter((l) => l.matchStatus !== 'matched' && l.matchStatus !== 'ignored').map((l) => ({ id: l.id, date: l.lineDate, direction: l.direction, amountMinor: l.amountMinor, description: l.description, reference: l.reference })), free);
+      const slim = (e: typeof matchedEntries[number]) => ({ id: e.id, entryDate: e.entryDate, kind: e.kind, amountMinor: e.amountMinor, partyName: e.partyName, description: e.description });
+      return {
+        statement: st,
+        lines: lines.map((l) => ({
+          ...l,
+          entry: l.matchedEntryId ? slim(matchedEntries.find((e) => e.id === l.matchedEntryId)!) : null,
+          candidates: l.matchStatus === 'matched' || l.matchStatus === 'ignored' ? [] : (sugg.get(l.id)?.candidates ?? []).map((cid) => free.find((e) => e.id === cid)!).filter(Boolean),
+        })),
+      };
+    }));
+  }));
+
+  r.post('/bank-lines/:lineId/match', requireRole('owner', 'finance_agent'), ah(async (req, res) => {
+    const t = req.tenant!;
+    const lineId = z.string().uuid().parse(req.params.lineId);
+    const b = z.object({ entryId: z.string().uuid(), note: z.string().min(3).max(300).optional() }).strict().parse(req.body);
+    const out = await withTenant(pool, t.id, async (db) => {
+      const [l] = await db.select().from(schema.bankLines).where(eq(schema.bankLines.id, lineId));
+      const [e] = await db.select().from(schema.financeEntries).where(eq(schema.financeEntries.id, b.entryId));
+      if (!l || !e) throw new HttpError(404, 'NOT_FOUND');
+      if (e.kind !== (l.direction === 'debit' ? 'expense' : 'contribution')) throw new HttpError(422, 'WRONG_DIRECTION', 'Money out matches an expense; money in matches a contribution.');
+      if (e.amountMinor !== l.amountMinor && !b.note) throw new HttpError(422, 'AMOUNT_DIFFERS', 'The amounts differ. Add a note saying why (for example a bank charge), then match.');
+      const [taken] = await db.select({ id: schema.bankLines.id }).from(schema.bankLines).where(and(eq(schema.bankLines.matchedEntryId, e.id), ne(schema.bankLines.id, l.id)));
+      if (taken) throw new HttpError(409, 'ENTRY_ALREADY_MATCHED', 'This entry is already matched to another bank line.');
+      const [u] = await db.update(schema.bankLines).set({ matchStatus: 'matched', matchedEntryId: e.id, matchNote: b.note ?? null, matchedBy: req.user!.id, matchedAt: new Date() }).where(eq(schema.bankLines.id, l.id)).returning();
+      await db.insert(schema.auditLog).values({ tenantId: t.id, actorId: req.user!.id, action: 'bank_match', entity: 'bank_line', entityId: l.id, after: { entryId: e.id, note: b.note ?? null }, ip: req.ip });
+      return u!;
+    });
+    res.json(out);
+  }));
+
+  r.post('/bank-lines/:lineId/unmatch', requireRole('owner', 'finance_agent'), ah(async (req, res) => {
+    const t = req.tenant!;
+    const lineId = z.string().uuid().parse(req.params.lineId);
+    const out = await withTenant(pool, t.id, async (db) => {
+      const [u] = await db.update(schema.bankLines).set({ matchStatus: 'unmatched', matchedEntryId: null, matchNote: null, matchedBy: null, matchedAt: null }).where(eq(schema.bankLines.id, lineId)).returning();
+      if (!u) throw new HttpError(404, 'NOT_FOUND');
+      await db.insert(schema.auditLog).values({ tenantId: t.id, actorId: req.user!.id, action: 'bank_unmatch', entity: 'bank_line', entityId: lineId, ip: req.ip });
+      return u;
+    });
+    res.json(out);
+  }));
+
+  /** Marks a line as not belonging in the register (for example the bank's own fee or a transfer between the campaign's accounts). Needs a reason. */
+  r.post('/bank-lines/:lineId/ignore', requireRole('owner', 'finance_agent'), ah(async (req, res) => {
+    const t = req.tenant!;
+    const lineId = z.string().uuid().parse(req.params.lineId);
+    const b = z.object({ note: z.string().min(3).max(300) }).strict().parse(req.body);
+    const out = await withTenant(pool, t.id, async (db) => {
+      const [u] = await db.update(schema.bankLines).set({ matchStatus: 'ignored', matchedEntryId: null, matchNote: b.note, matchedBy: req.user!.id, matchedAt: new Date() }).where(eq(schema.bankLines.id, lineId)).returning();
+      if (!u) throw new HttpError(404, 'NOT_FOUND');
+      await db.insert(schema.auditLog).values({ tenantId: t.id, actorId: req.user!.id, action: 'bank_ignore', entity: 'bank_line', entityId: lineId, after: { note: b.note }, ip: req.ip });
+      return u;
+    });
+    res.json(out);
+  }));
+
+  /** What does not agree: money the bank shows that has no entry, and bank-paid entries the statements do not show. */
+  r.get('/reconciliation', ah(async (req, res) => {
+    res.json(await withTenant(pool, req.tenant!.id, (db) => reconciliation(db)));
   }));
 
   return r;
+}
+
+type EntryRow = typeof schema.financeEntries.$inferSelect;
+
+/** Entries a bank line could still be matched to: not already matched, and paid in a way that passes through a bank. */
+async function unmatchedEntries(db: Db): Promise<EntryLite[]> {
+  const used = await db.select({ id: schema.bankLines.matchedEntryId }).from(schema.bankLines).where(sql`${schema.bankLines.matchedEntryId} is not null`);
+  const taken = new Set(used.map((u) => u.id));
+  const all = await db.select().from(schema.financeEntries);
+  return all.filter((e) => !taken.has(e.id)).map((e) => ({ id: e.id, kind: e.kind, entryDate: e.entryDate, amountMinor: e.amountMinor, partyName: e.partyName, paymentMode: e.paymentMode, billNo: e.billNo }));
+}
+
+export async function reconciliation(db: Db) {
+  const sts = await db.select().from(schema.bankStatements);
+  const from = sts.map((s) => s.periodFrom).filter((x): x is string => Boolean(x)).sort()[0] ?? null;
+  const to = sts.map((s) => s.periodTo).filter((x): x is string => Boolean(x)).sort().at(-1) ?? null;
+  const open = await db.select().from(schema.bankLines).where(inArray(schema.bankLines.matchStatus, ['unmatched', 'suggested'])).orderBy(asc(schema.bankLines.lineDate));
+  let notOnStatement: EntryRow[] = [];
+  if (from && to) {
+    const taken = await db.select({ id: schema.bankLines.matchedEntryId }).from(schema.bankLines).where(sql`${schema.bankLines.matchedEntryId} is not null`);
+    const takenIds = new Set(taken.map((x) => x.id));
+    const inRange = await db.select().from(schema.financeEntries).where(and(gte(schema.financeEntries.entryDate, from), lte(schema.financeEntries.entryDate, to)));
+    notOnStatement = inRange.filter((e) => e.paymentMode != null && BANK_MODES.has(e.paymentMode) && !takenIds.has(e.id));
+  }
+  const sum = (xs: { amountMinor: number }[]) => xs.reduce((s, x) => s + Number(x.amountMinor), 0);
+  return {
+    period: { from, to },
+    statements: sts.length,
+    inBankNotInRegister: open.map((l) => ({ id: l.id, statementId: l.statementId, date: l.lineDate, direction: l.direction, amountMinor: l.amountMinor, description: l.description, status: l.matchStatus })),
+    inRegisterNotInBank: notOnStatement.map((e) => ({ id: e.id, date: e.entryDate, kind: e.kind, amountMinor: e.amountMinor, partyName: e.partyName, paymentMode: e.paymentMode })),
+    totals: { bankLinesOpen: open.length, bankAmountOpenMinor: sum(open), entriesNotOnStatement: notOnStatement.length, entriesAmountMinor: sum(notOnStatement) },
+    clean: open.length === 0 && notOnStatement.length === 0 && sts.length > 0,
+  };
 }
 
 interface EntryInput {

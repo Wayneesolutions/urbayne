@@ -4,8 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Help</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700&family=Baloo+Paaji+2:wght@500;700&family=Noto+Sans:wght@400;600&family=Noto+Sans+Gurmukhi:wght@400;600&family=Noto+Sans+Devanagari:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/fonts/fonts.css">
 <style>
   :root { --ink: #26203F; --ink-soft: #5B5575; --paper: #F6F7FB; --card: #FFFFFF; --marigold: #E8A317; --marigold-deep: #B97C00; --leaf: #2F7D5B; --rust: #B2432F; --line: #E3E4EE; --radius-big: 28px; --radius: 16px; }
   * { box-sizing: border-box; }
@@ -13,8 +12,7 @@
   body { background: var(--paper); color: var(--ink); font: 18px/1.55 "Noto Sans", "Noto Sans Gurmukhi", "Noto Sans Devanagari", system-ui, sans-serif; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
   body[data-lang="pa"] { font-family: "Noto Sans Gurmukhi", "Noto Sans", sans-serif; }
   body[data-lang="hi"] { font-family: "Noto Sans Devanagari", "Noto Sans", sans-serif; }
-  .display { font-family: "Baloo 2", sans-serif; font-weight: 700; }
-  body[data-lang="pa"] .display { font-family: "Baloo Paaji 2", "Baloo 2", sans-serif; }
+  .display { font-weight: 600; }
   main { max-width: 520px; margin: 0 auto; padding: 16px 16px 80px; }
   button, input, textarea, select { font: inherit; color: inherit; }
   button { cursor: pointer; }
@@ -42,7 +40,7 @@
   .error { color: var(--rust); margin: 12px 0 0; }
   .done { text-align: center; }
   .done .tick { width: 72px; height: 72px; border-radius: 50%; background: var(--leaf); display: grid; place-items: center; margin: 0 auto 12px; }
-  .refno { font: 700 40px/1.1 "Baloo 2", sans-serif; letter-spacing: 1px; background: var(--paper); border-radius: var(--radius); padding: 14px; margin: 12px 0; }
+  .refno { font: 600 40px/1.1 "Noto Sans", sans-serif; letter-spacing: 1px; background: var(--paper); border-radius: var(--radius); padding: 14px; margin: 12px 0; }
   .line { border-left: 3px solid var(--line); padding: 2px 0 2px 14px; margin: 10px 0; }
   .line small { color: var(--ink-soft); display: block; }
   .hp { position: absolute; left: -9999px; height: 0; width: 0; overflow: hidden; }

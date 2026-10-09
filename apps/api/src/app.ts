@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { getRegion } from '@cs/regions';
 import { errorHandlerFor } from './lib/http.js';
 import { createLogger, requestLogger } from './lib/logger.js';
-import { securityHeaders, strictCsp, voterPage } from './lib/security.js';
+import { dashboardCsp, securityHeaders, strictCsp, voterPage } from './lib/security.js';
 import { NoopReporter } from './lib/observability.js';
 import { costRoutes, adminCostRoutes } from './modules/observability/costs.js';
 import { requireUser } from './middleware/auth.js';
@@ -32,6 +32,12 @@ import { serviceAdminRoutes } from './modules/service/admin.js';
 import { resultsRoutes } from './modules/results/routes.js';
 import { MemoryRateStore, RedisRateStore } from './lib/rate-limit.js';
 import { MemorySessions, RedisSessions } from './lib/sessions.js';
+import { createStore } from './lib/storage.js';
+import { fileRoutes } from './modules/files/routes.js';
+import { fontsRouter } from './lib/fonts.js';
+import { billingRoutes } from './modules/billing/routes.js';
+import { packRoutes, tenantPackRoutes } from './modules/packs/routes.js';
+import { agencyAdminRoutes, agencyRoutes, tenantAgencyRoutes } from './modules/agency/routes.js';
 import type { Deps, DepsInit } from './types.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -44,6 +50,7 @@ export function resolveDeps(init: DepsInit): Deps {
     sessions: init.sessions ?? (init.redis ? new RedisSessions(init.redis) : new MemorySessions()),
     log: init.log ?? createLogger({ level: init.env.LOG_LEVEL ?? (init.env.NODE_ENV === 'test' ? 'silent' : 'info') }),
     reporter: init.reporter ?? new NoopReporter(),
+    store: init.store ?? createStore(init.env),
   };
 }
 
@@ -67,7 +74,7 @@ export function createApp(init: DepsInit) {
   });
   app.get('/api/region', (_req, res) => {
     const r = getRegion(deps.env.DEPLOY_REGION);
-    res.json({ code: r.code, locales: r.locales, defaultLocale: r.defaultLocale, currency: r.currency, geographyLevels: r.geographyLevels });
+    res.json({ code: r.code, locales: r.locales, defaultLocale: r.defaultLocale, currency: r.currency, geographyLevels: r.geographyLevels, map: { tileUrl: deps.env.MAP_TILE_URL, attribution: deps.env.MAP_ATTRIBUTION } });
   });
 
   // Public (no login)
@@ -76,6 +83,7 @@ export function createApp(init: DepsInit) {
   app.use('/s', shortLinkRedirect(deps));
   app.use('/webhooks', vapiWebhook(deps));
   app.use('/webhooks/sms', inboundSmsRoutes(deps));
+  app.use('/fonts', fontsRouter());
   app.get('/v/:slug', voterPage(path.join(here, 'public', 'voter.html')));
   // Residents' page for constituent service: report a problem and check its progress.
   app.get('/help/:slug', voterPage(path.join(here, 'public', 'help.html')));
@@ -103,14 +111,23 @@ export function createApp(init: DepsInit) {
   app.use('/api/t/:tenantId/costs', authed, costRoutes(deps));
   app.use('/api/t/:tenantId/service', authed, serviceRoutes(deps));
   app.use('/api/t/:tenantId/results', authed, resultsRoutes(deps));
+  app.use('/api/t/:tenantId/files', authed, fileRoutes(deps));
+  app.use('/api/t/:tenantId/billing', authed, billingRoutes(deps));
+  app.use('/api/t/:tenantId/pack', authed, tenantPackRoutes(deps));
+  app.use('/api/packs', packRoutes(deps));
+  app.use('/api/agencies', authed, agencyRoutes(deps));
+  app.use('/api/t/:tenantId/agency', authed, tenantAgencyRoutes(deps));
+  app.use('/api/admin', agencyAdminRoutes(deps));
   app.use('/api/admin', adminCostRoutes(deps));
   app.use('/api/admin', serviceAdminRoutes(deps));
 
-  // Built dashboard (apps/dashboard/dist), if present.
+  // Built dashboard (apps/dashboard/dist), if present. Its CSP also allows map pictures from the configured tile server.
+  const dashCsp = dashboardCsp(deps.env.MAP_TILE_URL);
+
   const dash = path.resolve(here, '../../dashboard/dist');
   if (existsSync(dash)) {
-    app.use('/admin', strictCsp, express.static(dash));
-    app.get('/admin/*', strictCsp, (_req, res) => res.sendFile(path.join(dash, 'index.html')));
+    app.use('/admin', dashCsp, express.static(dash));
+    app.get('/admin/*', dashCsp, (_req, res) => res.sendFile(path.join(dash, 'index.html')));
   }
 
   app.use(errorHandlerFor(deps.log, deps.reporter));

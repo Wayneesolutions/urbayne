@@ -90,7 +90,7 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
     it('production adds HSTS', async () => {
       const prod = createApp(resolveDeps({
         pool, env: testEnv({
-          NODE_ENV: 'production', DEV_RETURN_OTP: 'false', REDIS_URL: 'redis://localhost:6379', EVIDENCE_SIGNING_KEY: 'k'.repeat(32),
+          NODE_ENV: 'production', DEV_RETURN_OTP: 'false', REDIS_URL: 'redis://localhost:6379', EVIDENCE_SIGNING_KEY: 'k'.repeat(32), STORAGE_DRIVER: 's3', FILES_BUCKET: 'test-files',
           OTP_PROVIDER: 'twilio', TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 't', TWILIO_MESSAGING_SERVICE_SID: 'MG1',
         }),
       }));

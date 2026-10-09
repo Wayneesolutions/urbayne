@@ -30,6 +30,25 @@ export const strictCsp: RequestHandler = (_req, res, next) => {
 };
 
 /**
+ * CSP for the staff dashboard: the same as strictCsp, plus pictures from the map tile server. {s} {z} {x} {y} in the tile address are
+ * placeholders; a {s} subdomain placeholder allows the tile host's subdomains.
+ */
+export function dashboardCsp(tileUrl: string): RequestHandler {
+  let imgHost = '';
+  try {
+    const u = new URL(tileUrl.replace(/\{s\}/g, 'a').replace(/\{[a-z]\}/g, '0'));
+    imgHost = tileUrl.includes('{s}') ? `${u.protocol}//*.${u.host.replace(/^a\./, '')}` : u.origin;
+  } catch { /* no usable tile address: no map pictures */ }
+  return (_req, res, next) => {
+    res.setHeader('Content-Security-Policy', [
+      "default-src 'self'", "script-src 'self'", `style-src 'self' 'unsafe-inline' ${FONTS_STYLE}`, `font-src ${FONTS_FILES}`,
+      `img-src 'self' data: blob: ${imgHost}`.trim(), "connect-src 'self'", "frame-ancestors 'none'", "base-uri 'self'", "form-action 'self'", "object-src 'none'",
+    ].join('; '));
+    next();
+  };
+}
+
+/**
  * The voter page has one inline script. It is allowed by a fresh nonce on every response (not by 'unsafe-inline'),
  * so an injected script would not run.
  */
@@ -38,7 +57,8 @@ export function voterPage(file: string): RequestHandler {
   return (_req, res) => {
     const nonce = randomBytes(16).toString('base64');
     res.setHeader('Content-Security-Policy', [
-      "default-src 'self'", `script-src 'nonce-${nonce}'`, `style-src 'self' 'unsafe-inline' ${FONTS_STYLE}`, `font-src ${FONTS_FILES}`,
+      // Nothing from a third party: fonts come from this server (see lib/fonts.ts), so a voter's phone contacts only the campaign's own address.
+      "default-src 'self'", `script-src 'nonce-${nonce}'`, "style-src 'self' 'unsafe-inline'", "font-src 'self'",
       "img-src 'self' data:", "connect-src 'self'", "media-src 'self' blob:", "frame-ancestors 'none'", "base-uri 'self'", "form-action 'self'", "object-src 'none'",
     ].join('; '));
     res.type('html').send(html.replace(/<script>/g, `<script nonce="${nonce}">`));

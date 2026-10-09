@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { schema, withTenant } from '@cs/db';
-import { getRegion } from '@cs/regions';
+import { getProvince, getRegion } from '@cs/regions';
 import { HttpError, ah } from '../lib/http.js';
 import { loadTenant, requireRole } from '../middleware/auth.js';
 import type { Deps } from '../types.js';
@@ -20,6 +20,8 @@ const createSchema = z.object({
   enabledModules: z.array(z.enum(MODULES)).default([]),
   /** 'office' = a sitting representative's service office (no election-date deletion; ticket retention instead). */
   kind: z.enum(['campaign', 'office']).default('campaign'),
+  /** Canadian province whose rules apply (for example MB). Only for Canadian deployments. */
+  province: z.string().regex(/^[A-Z]{2}$/).optional(),
 });
 
 export function tenantRoutes(deps: Deps) {
@@ -29,6 +31,7 @@ export function tenantRoutes(deps: Deps) {
   r.post('/', ah(async (req, res) => {
     const b = createSchema.parse(req.body);
     const region = getRegion(env.DEPLOY_REGION);
+    if (b.province && !getProvince(region.code, b.province)) throw new HttpError(422, 'PROVINCE_NOT_SUPPORTED', `Provincial rules for ${b.province} are not set up on this deployment.`);
     const id = randomUUID();
     try {
       const tenant = await withTenant(pool, id, async (db) => {
@@ -43,6 +46,7 @@ export function tenantRoutes(deps: Deps) {
           pollCloseAt: b.pollCloseAt ? new Date(b.pollCloseAt) : null,
           enabledModules: b.enabledModules,
           kind: b.kind,
+          province: b.province ?? null,
         }).returning();
         await db.insert(schema.memberships).values({ tenantId: id, userId: req.user!.id, role: 'owner' });
         await db.insert(schema.auditLog).values({ tenantId: id, actorId: req.user!.id, action: 'create', entity: 'tenant', entityId: id, after: t, ip: req.ip });

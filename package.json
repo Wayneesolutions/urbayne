@@ -2,6 +2,11 @@
   "name": "campaign-suite",
   "private": true,
   "packageManager": "pnpm@9.15.9",
+  "pnpm": {
+    "overrides": {
+      "source-map-js": ">=1.2.2"
+    }
+  },
   "scripts": {
     "build": "turbo run build",
     "test": "turbo run test",

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { validateDltTemplate } from '@cs/channels';
+import { getRegion } from '@cs/regions';
 
 const schema = z.object({
   APP_DATABASE_URL: z.string().url(),
@@ -47,6 +48,20 @@ const schema = z.object({
   FX_USD_TO_CAD: z.coerce.number().positive().default(1.4),
   // Signs evidence PDFs (HMAC). Required in production; in development it falls back to a key derived from JWT_SECRET.
   EVIDENCE_SIGNING_KEY: z.string().min(32).optional(),
+  // Uploaded files (receipt photos, bank statements, roll copies, voice recordings). 'local' = a folder on this server (development only).
+  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  FILES_BUCKET: z.string().min(3).optional(),
+  // Must be this deployment's own data region (ap-south-1 for IN, ca-central-1 for CA): files never leave the region.
+  FILES_REGION: z.string().optional(),
+  // S3-compatible endpoint override (MinIO, localstack). Leave empty for AWS.
+  FILES_ENDPOINT: z.string().url().optional(),
+  FILES_LOCAL_DIR: z.string().default('.files'),
+  // Map tiles for the dashboard maps. {z}/{x}/{y} placeholders. The default is OpenStreetMap's public server, which its usage policy
+  // allows only for light use: use a tile provider or your own tile server for real campaigns.
+  MAP_TILE_URL: z.string().default('https://tile.openstreetmap.org/{z}/{x}/{y}.png'),
+  MAP_ATTRIBUTION: z.string().default('© OpenStreetMap contributors'),
+  // Road routing for sign drops and canvassing routes: an OSRM server (https://project-osrm.org). Without it routes use straight-line distance.
+  ROUTING_BASE_URL: z.string().url().optional(),
   // Error reports (Sentry). Optional: without a DSN errors are only in the logs.
   SENTRY_DSN: z.string().url().optional(),
   SENTRY_ENVIRONMENT: z.string().optional(),
@@ -70,6 +85,12 @@ const schema = z.object({
   message: 'DLT_OTP_TEMPLATE_TEXT must be a valid DLT template with exactly one {#var#} (the code)',
 }).refine((e) => !(e.NODE_ENV === 'production' && !e.EVIDENCE_SIGNING_KEY), {
   message: 'EVIDENCE_SIGNING_KEY is required in production',
+}).refine((e) => !(e.NODE_ENV === 'production' && e.STORAGE_DRIVER !== 's3'), {
+  message: 'STORAGE_DRIVER=s3 is required in production (uploaded files must be kept in the region\'s own bucket, not on the server)',
+}).refine((e) => e.STORAGE_DRIVER !== 's3' || !!e.FILES_BUCKET, {
+  message: 'STORAGE_DRIVER=s3 needs FILES_BUCKET',
+}).refine((e) => e.STORAGE_DRIVER !== 's3' || !e.FILES_REGION || e.FILES_REGION === getRegion(e.DEPLOY_REGION).dataRegion, {
+  message: 'FILES_REGION must be this deployment\'s own data region (data residency)',
 });
 
 export type Env = z.infer<typeof schema>;

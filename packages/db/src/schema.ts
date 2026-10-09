@@ -42,6 +42,12 @@ export const tenants = pgTable('tenants', {
   purgedAt: timestamp('purged_at', { withTimezone: true }),
   /** Set when the results were frozen into the archive after the election: no more reports are accepted. */
   resultsArchivedAt: timestamp('results_archived_at', { withTimezone: true }),
+  /** Canadian province whose rules apply (for example MB). */
+  province: text('province'),
+  /** The election package applied to this campaign, and the onboarding checklist items ticked by hand. */
+  packId: text('pack_id'),
+  packAppliedAt: timestamp('pack_applied_at', { withTimezone: true }),
+  packChecks: jsonb('pack_checks').$type<Record<string, { by: string; at: string }>>().notNull().default({}),
   ...stamps,
 });
 
@@ -339,6 +345,8 @@ export const financeEntries = pgTable('finance_entries', {
   eligibleAttested: boolean('eligible_attested').notNull().default(false),
   receiptNo: text('receipt_no'),
   receiptFile: text('receipt_file'),
+  /** The uploaded receipt photo or PDF (stored_files). */
+  receiptFileId: uuid('receipt_file_id'),
   source: text('source', { enum: ['manual', 'event', 'call_run'] }).notNull().default('manual'),
   sourceRef: uuid('source_ref'),
   flags: jsonb('flags').$type<{ code: string; message: string }[]>().notNull().default([]),
@@ -454,13 +462,23 @@ export const subscriptions = pgTable('subscriptions', {
   smsRateMinor: bigint('sms_rate_minor', { mode: 'number' }).notNull().default(0),
   smsIncluded: integer('sms_included').notNull().default(0),
   taxPercent: numeric('tax_percent', { precision: 5, scale: 2 }),
+  /** The package this campaign is on (plans), its billing style, and a copy of the package terms taken when it was assigned. */
+  planCode: text('plan_code'),
+  billing: text('billing', { enum: ['per_campaign', 'monthly'] }).notNull().default('monthly'),
+  terms: jsonb('terms').$type<PlanTerms | null>(),
+  discountPercent: numeric('discount_percent', { precision: 5, scale: 2 }),
   status: text('status', { enum: ['trial', 'active', 'past_due', 'cancelled'] }).notNull().default('active'),
   startedOn: date('started_on').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-export interface InvoiceLine { description: string; quantity: number; unitMinor: number; amountMinor: number }
+export const METRICS = ['smsSent', 'callMinutes', 'assistantQuestions', 'contacts', 'teamMembers'] as const;
+export type Metric = (typeof METRICS)[number];
+export interface PlanTerms { included: Partial<Record<Metric, number>>; overageMinor: Partial<Record<Metric, number>>; hardLimits: Partial<Record<Metric, number>> }
+
+/** metric: which meter an overage line bills, so a later invoice can bill only what is new. */
+export interface InvoiceLine { description: string; quantity: number; unitMinor: number; amountMinor: number; metric?: Metric }
 export const invoices = pgTable('invoices', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull(),
@@ -560,4 +578,149 @@ export const resultsArchives = pgTable('results_archives', {
   takenAt: timestamp('taken_at', { withTimezone: true }).notNull().defaultNow(),
   takenBy: uuid('taken_by'),
   summary: jsonb('summary').notNull(),
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Phase 4: stored files and bank reconciliation.
+
+export const FILE_PURPOSES = ['receipt', 'bank_statement', 'roll_proof', 'audio'] as const;
+export type FilePurpose = (typeof FILE_PURPOSES)[number];
+
+export const storedFiles = pgTable('stored_files', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  purpose: text('purpose', { enum: FILE_PURPOSES }).notNull(),
+  storageKey: text('storage_key').notNull(),
+  contentType: text('content_type').notNull(),
+  bytes: integer('bytes').notNull(),
+  sha256: text('sha256').notNull(),
+  originalName: text('original_name'),
+  uploadedBy: uuid('uploaded_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+});
+
+export const rollImports = pgTable('roll_imports', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  geoAreaId: uuid('geo_area_id').notNull(),
+  proofFileId: uuid('proof_file_id').notNull(),
+  sourceKind: text('source_kind', { enum: ['electoral_roll_copy', 'other_legal_list'] }).notNull(),
+  sourceDescription: text('source_description').notNull(),
+  format: text('format', { enum: ['csv', 'xlsx', 'rows'] }).notNull(),
+  rowsTotal: integer('rows_total').notNull(),
+  rowsImported: integer('rows_imported').notNull(),
+  rowsDuplicate: integer('rows_duplicate').notNull().default(0),
+  rowsRejected: integer('rows_rejected').notNull().default(0),
+  ignoredColumns: text('ignored_columns').array().notNull().default([]),
+  importedBy: uuid('imported_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const households = pgTable('households', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  geoAreaId: uuid('geo_area_id').notNull(),
+  rollImportId: uuid('roll_import_id').notNull(),
+  houseNo: text('house_no').notNull(),
+  address: text('address'),
+  electors: integer('electors'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const plans = pgTable('plans', {
+  code: text('code').primaryKey(),
+  name: text('name').notNull(),
+  region: text('region', { enum: ['IN', 'CA'] }).notNull(),
+  currency: text('currency', { enum: ['INR', 'CAD'] }).notNull(),
+  billing: text('billing', { enum: ['per_campaign', 'monthly'] }).notNull(),
+  priceMinor: bigint('price_minor', { mode: 'number' }).notNull(),
+  included: jsonb('included').$type<PlanTerms['included']>().notNull().default({}),
+  overageMinor: jsonb('overage_minor').$type<PlanTerms['overageMinor']>().notNull().default({}),
+  hardLimits: jsonb('hard_limits').$type<PlanTerms['hardLimits']>().notNull().default({}),
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const audioClips = pgTable('audio_clips', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  contentItemId: uuid('content_item_id').notNull(),
+  fileId: uuid('file_id').notNull(),
+  bodySha256: text('body_sha256').notNull(),
+  durationMs: integer('duration_ms'),
+  recordedBy: text('recorded_by'),
+  createdBy: uuid('created_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const agencies = pgTable('agencies', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull(),
+  brandName: text('brand_name'),
+  primaryColor: text('primary_color'),
+  supportEmail: text('support_email'),
+  createdBy: uuid('created_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const agencyMembers = pgTable('agency_members', {
+  agencyId: uuid('agency_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  role: text('role', { enum: ['admin', 'staff'] }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const agencyInvites = pgTable('agency_invites', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  codeHash: text('code_hash').notNull(),
+  whiteLabel: boolean('white_label').notNull().default(false),
+  createdBy: uuid('created_by'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const agencyLinks = pgTable('agency_links', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  agencyId: uuid('agency_id').notNull(),
+  tenantId: uuid('tenant_id').notNull(),
+  status: text('status', { enum: ['active', 'revoked'] }).notNull().default('active'),
+  whiteLabel: boolean('white_label').notNull().default(false),
+  linkedBy: uuid('linked_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+});
+
+export const bankStatements = pgTable('bank_statements', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  fileId: uuid('file_id'),
+  label: text('label').notNull(),
+  periodFrom: date('period_from'),
+  periodTo: date('period_to'),
+  lineCount: integer('line_count').notNull().default(0),
+  uploadedBy: uuid('uploaded_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const bankLines = pgTable('bank_lines', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  statementId: uuid('statement_id').notNull(),
+  lineNo: integer('line_no').notNull(),
+  lineDate: date('line_date').notNull(),
+  description: text('description').notNull().default(''),
+  reference: text('reference'),
+  direction: text('direction', { enum: ['debit', 'credit'] }).notNull(),
+  amountMinor: bigint('amount_minor', { mode: 'number' }).notNull(),
+  matchStatus: text('match_status', { enum: ['unmatched', 'suggested', 'matched', 'ignored'] }).notNull().default('unmatched'),
+  matchedEntryId: uuid('matched_entry_id'),
+  matchNote: text('match_note'),
+  matchedBy: uuid('matched_by'),
+  matchedAt: timestamp('matched_at', { withTimezone: true }),
 });

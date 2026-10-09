@@ -2,11 +2,14 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { and, desc, eq } from 'drizzle-orm';
 import { schema, withTenant } from '@cs/db';
-import { getRegion, type Locale } from '@cs/regions';
+import { BLANK_OPEN, getRegion, type Locale } from '@cs/regions';
 import { renderDisclosure } from '@cs/compliance';
 import { HttpError, ah } from '../lib/http.js';
 import { loadTenant, requireRole } from '../middleware/auth.js';
 import { validateDltTemplate } from '@cs/channels';
+import { audioCoverage, bodyHash, serveAudio } from '../modules/audio/audio.js';
+import { deleteFiles, loadFile, saveFile } from '../modules/files/files.js';
+import { rawUpload, uploadName } from '../modules/files/routes.js';
 import type { Deps } from '../types.js';
 
 /** Rejects India SMS text that the DLT portal or the operator would refuse. */
@@ -129,6 +132,59 @@ export function contentRoutes(deps: Deps) {
     res.json(row);
   }));
 
+  // ----- recorded audio for voter pages -----
+  /** Which pages have a recording, which are out of date (text changed after recording) and which still need one. */
+  r.get('/audio-coverage', requireRole('owner', 'manager', 'coordinator'), ah(async (req, res) => {
+    const rows = await withTenant(pool, req.tenant!.id, (db) => audioCoverage(db));
+    const need = rows.filter((x) => (x.locale === 'pa' || x.locale === 'hi') && x.audio !== 'ready' && ['approved', 'certified'].includes(x.status));
+    res.json({ pages: rows, needRecording: need.length });
+  }));
+
+  /** Upload the recording of one page (the request body is the audio file). Replaces an earlier recording. */
+  r.put('/:id/audio', requireRole('owner', 'manager'), rawUpload(5 * 1024 * 1024), ah(async (req, res) => {
+    const t = req.tenant!;
+    const id = z.string().uuid().parse(req.params.id);
+    const meta = z.object({ artist: z.string().min(1).max(80).optional(), durationMs: z.coerce.number().int().min(500).max(30 * 60_000).optional() }).parse({ artist: req.query.artist || undefined, durationMs: req.query.durationMs || undefined });
+    const out = await withTenant(pool, t.id, async (db) => {
+      const [item] = await db.select().from(schema.contentItems).where(eq(schema.contentItems.id, id));
+      if (!item) throw new HttpError(404, 'NOT_FOUND');
+      if (item.kind !== 'page') throw new HttpError(409, 'AUDIO_ONLY_FOR_PAGES', 'Recordings are for the pages voters read. Voice call scripts are spoken by the call provider.');
+      const [old] = await db.select().from(schema.audioClips).where(eq(schema.audioClips.contentItemId, id));
+      const f = await saveFile(deps, db, t.id, req.user!.id, 'audio', Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0), uploadName(req));
+      const v = { fileId: f.id, bodySha256: bodyHash(item.body), durationMs: meta.durationMs ?? null, recordedBy: meta.artist ?? null, createdBy: req.user!.id, updatedAt: new Date() };
+      const [clip] = old
+        ? await db.update(schema.audioClips).set(v).where(eq(schema.audioClips.id, old.id)).returning()
+        : await db.insert(schema.audioClips).values({ tenantId: t.id, contentItemId: id, ...v }).returning();
+      if (old) await deleteFiles(deps, db, eq(schema.storedFiles.id, old.fileId));
+      await db.insert(schema.auditLog).values({ tenantId: t.id, actorId: req.user!.id, action: 'record_audio', entity: 'content_item', entityId: id, after: { fileId: f.id, sha256: f.sha256, artist: meta.artist ?? null, replaced: Boolean(old) }, ip: req.ip });
+      return { id: clip!.id, contentItemId: id, contentType: f.contentType, bytes: f.bytes, durationMs: clip!.durationMs, recordedBy: clip!.recordedBy };
+    });
+    res.status(201).json(out);
+  }));
+
+  r.get('/:id/audio', requireRole('owner', 'manager', 'coordinator'), ah(async (req, res) => {
+    const id = z.string().uuid().parse(req.params.id);
+    const { file, body } = await withTenant(pool, req.tenant!.id, async (db) => {
+      const [c] = await db.select().from(schema.audioClips).where(eq(schema.audioClips.contentItemId, id));
+      if (!c) throw new HttpError(404, 'NO_AUDIO');
+      return loadFile(deps, db, c.fileId, 'audio');
+    });
+    serveAudio(req, res, body, file.contentType, file.sha256);
+  }));
+
+  r.delete('/:id/audio', requireRole('owner', 'manager'), ah(async (req, res) => {
+    const t = req.tenant!;
+    const id = z.string().uuid().parse(req.params.id);
+    await withTenant(pool, t.id, async (db) => {
+      const [c] = await db.select().from(schema.audioClips).where(eq(schema.audioClips.contentItemId, id));
+      if (!c) throw new HttpError(404, 'NO_AUDIO');
+      await db.delete(schema.audioClips).where(eq(schema.audioClips.id, c.id));
+      await deleteFiles(deps, db, eq(schema.storedFiles.id, c.fileId));
+      await db.insert(schema.auditLog).values({ tenantId: t.id, actorId: req.user!.id, action: 'delete_audio', entity: 'content_item', entityId: id, ip: req.ip });
+    });
+    res.json({ ok: true });
+  }));
+
   r.post('/:id/approve', requireRole('owner'), ah(async (req, res) => {
     const t = req.tenant!;
     const region = getRegion(t.region);
@@ -136,6 +192,8 @@ export function contentRoutes(deps: Deps) {
     const row = await withTenant(pool, t.id, async (db) => {
       const [item] = await db.select().from(schema.contentItems).where(and(eq(schema.contentItems.id, req.params.id!)));
       if (!item) throw new HttpError(404, 'NOT_FOUND');
+      // Text from an election package still has blanks to fill in (marked with ⟦ ⟧): it cannot be approved like that.
+      if (item.body.includes(BLANK_OPEN) || item.title.includes(BLANK_OPEN)) throw new HttpError(422, 'TEMPLATE_NOT_FILLED', 'This text still has blanks marked ⟦ ⟧. Fill them in, then approve.');
 
       // Voice scripts must open with the disclosure before anyone can approve them.
       if (item.kind === 'script') {

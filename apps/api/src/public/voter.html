@@ -4,8 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Campaign</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700&family=Baloo+Paaji+2:wght@500;700&family=Noto+Sans:wght@400;600&family=Noto+Sans+Gurmukhi:wght@400;600&family=Noto+Sans+Devanagari:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/fonts/fonts.css">
 <style>
   :root {
     --ink: #26203F;
@@ -28,16 +27,15 @@
   }
   body[data-lang="pa"] { font-family: "Noto Sans Gurmukhi", "Noto Sans", sans-serif; }
   body[data-lang="hi"] { font-family: "Noto Sans Devanagari", "Noto Sans", sans-serif; }
-  .display { font-family: "Baloo 2", sans-serif; font-weight: 700; }
-  body[data-lang="pa"] .display { font-family: "Baloo Paaji 2", "Baloo 2", sans-serif; }
+  .display { font-weight: 600; }
   main { max-width: 520px; margin: 0 auto; padding: 16px 16px 120px; }
   button, input, textarea { font: inherit; color: inherit; }
   button { cursor: pointer; }
   :focus-visible { outline: 3px solid var(--marigold-deep); outline-offset: 3px; }
 
   .demo { background: #FFF3D6; color: #6B4A00; border-radius: 12px; padding: 8px 14px; font-size: 15px; margin-bottom: 12px; }
-  .langs { display: flex; gap: 8px; margin-bottom: 20px; }
-  .langs button { flex: 1; min-height: 52px; border-radius: 999px; border: 2px solid var(--line); background: var(--card); font-size: 18px; }
+  .langs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  .langs button { flex: 1 1 28%; min-height: 52px; border-radius: 999px; border: 2px solid var(--line); background: var(--card); font-size: 18px; }
   .langs button[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: #fff; }
 
   header.hero { padding: 8px 4px 20px; }
@@ -102,6 +100,8 @@
     <button data-lang="pa" lang="pa">ਪੰਜਾਬੀ</button>
     <button data-lang="hi" lang="hi">हिंदी</button>
     <button data-lang="en" lang="en">English</button>
+    <button data-lang="fr" lang="fr">Français</button>
+    <button data-lang="tl" lang="tl">Tagalog</button>
   </div>
 
   <header class="hero">
@@ -166,8 +166,17 @@ const T = {
     iUpdates: 'Get updates', iVolunteer: 'Volunteer', iIssue: 'Report a problem', iCall: 'Call me back', issueLabel: 'What is the problem?', nameLabel: 'Your name', phoneLabel: 'Mobile number',
     consentCalls: 'Yes, the campaign may call me, including automated calls. I can say "stop" at any time.', consentSms: 'Yes, send me text messages.', send: 'Send',
     thanks: 'Thank you! We will be in touch soon.', needChoice: 'Pick at least one option and enter your mobile number.', ask: 'Ask a question', askTitle: 'Ask a question', askSend: 'Ask', noPlan: 'The plan for this area is coming soon.', source: 'Source', demo: 'Demo page: this is not a real campaign.' },
+  // French and Tagalog (Canada). Have a native speaker review these before a live campaign uses them.
+  fr: { pickArea: 'Choisissez votre secteur', search: 'Tapez un nom ou choisissez ci-dessous', hearPlan: 'Le plan pour votre secteur', pickFirst: "Choisissez d'abord votre secteur.", listen: 'Écouter', stop: 'Arrêter', join: 'Joignez-vous à la campagne',
+    iUpdates: 'Recevoir des nouvelles', iVolunteer: 'Faire du bénévolat', iIssue: 'Signaler un problème', iCall: 'Rappelez-moi', issueLabel: 'Quel est le problème ?', nameLabel: 'Votre nom', phoneLabel: 'Numéro de cellulaire',
+    consentCalls: "Oui, la campagne peut m'appeler, y compris par appels automatisés. Je peux dire « arrêtez » à tout moment.", consentSms: 'Oui, envoyez-moi des messages texte.', send: 'Envoyer',
+    thanks: 'Merci ! Nous communiquerons bientôt avec vous.', needChoice: 'Choisissez au moins une option et entrez votre numéro de cellulaire.', ask: 'Poser une question', askTitle: 'Poser une question', askSend: 'Demander', noPlan: 'Le plan pour ce secteur sera bientôt disponible.', source: 'Source', demo: "Page de démonstration : ce n'est pas une vraie campagne." },
+  tl: { pickArea: 'Piliin ang inyong lugar', search: 'Mag-type ng pangalan o pumili sa ibaba', hearPlan: 'Ang plano para sa inyong lugar', pickFirst: 'Piliin muna ang inyong lugar.', listen: 'Pakinggan', stop: 'Ihinto', join: 'Sumama sa kampanya',
+    iUpdates: 'Tumanggap ng balita', iVolunteer: 'Magboluntaryo', iIssue: 'Mag-ulat ng problema', iCall: 'Tawagan ako', issueLabel: 'Ano ang problema?', nameLabel: 'Inyong pangalan', phoneLabel: 'Numero ng mobile',
+    consentCalls: 'Oo, maaari akong tawagan ng kampanya, kasama ang mga awtomatikong tawag. Maaari akong magsabi ng "itigil" anumang oras.', consentSms: 'Oo, padalhan ninyo ako ng text message.', send: 'Ipadala',
+    thanks: 'Salamat! Makikipag-ugnayan kami sa lalong madaling panahon.', needChoice: 'Pumili ng kahit isa at ilagay ang inyong numero ng mobile.', ask: 'Magtanong', askTitle: 'Magtanong', askSend: 'Itanong', noPlan: 'Malapit nang ilabas ang plano para sa lugar na ito.', source: 'Pinagmulan', demo: 'Demo na pahina: hindi ito totoong kampanya.' },
 };
-const SPEECH = { pa: 'pa-IN', hi: 'hi-IN', en: 'en-IN' };
+const SPEECH = { pa: 'pa-IN', hi: 'hi-IN', en: 'en-IN', fr: 'fr-CA', tl: 'fil-PH' };
 const slug = location.pathname.split('/').filter(Boolean)[1];
 const ref = new URLSearchParams(location.search).get('ref');
 const api = (p, o) => fetch(`/api/public/${slug}${p}`, o).then(async (r) => { const j = await r.json(); if (!r.ok) throw j; return j; });
@@ -186,20 +195,45 @@ function applyLang() {
   renderAreas(); if (chosen) loadPlan();
 }
 
-// Read-aloud. Production serves pre-recorded audio per block; the demo uses the phone's own voice.
-function speak(text, btn) {
-  if (!('speechSynthesis' in window)) return;
-  if (speaking === btn) { speechSynthesis.cancel(); return; }
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = SPEECH[lang];
-  const voice = speechSynthesis.getVoices().find((v) => v.lang.startsWith(lang)) || speechSynthesis.getVoices().find((v) => v.lang.startsWith(lang === 'pa' ? 'hi' : lang));
-  if (voice) u.voice = voice;
-  const off = () => { if (btn) { btn.setAttribute('aria-pressed', 'false'); btn.querySelector('.lbl') && (btn.querySelector('.lbl').textContent = t('listen')); } speaking = null; };
-  u.onend = off; u.onerror = off;
-  if (btn) { btn.setAttribute('aria-pressed', 'true'); btn.querySelector('.lbl') && (btn.querySelector('.lbl').textContent = t('stop')); }
-  speaking = btn; speechSynthesis.speak(u);
+// Read-aloud. A page with a recorded voice plays the recording; any other text is read by the phone's own voice.
+const hasSpeech = 'speechSynthesis' in window;
+function setBtn(btn, on) {
+  if (!btn) return;
+  btn.setAttribute('aria-pressed', String(on));
+  const l = btn.querySelector('.lbl'); if (l) l.textContent = t(on ? 'stop' : 'listen');
 }
+function stopAll() { if (speaking) { speaking.stopped = true; if (speaking.audio) speaking.audio.pause(); setBtn(speaking.btn, false); speaking = null; } if (hasSpeech) speechSynthesis.cancel(); }
+function speakText(text) {
+  return new Promise((done) => {
+    if (!hasSpeech) return done();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = SPEECH[lang];
+    const pre = SPEECH[lang].split('-')[0], voices = speechSynthesis.getVoices();
+    const voice = voices.find((v) => v.lang.startsWith(pre)) || voices.find((v) => v.lang.startsWith(lang === 'pa' ? 'hi' : pre));
+    if (voice) u.voice = voice;
+    u.onend = done; u.onerror = done;
+    speechSynthesis.speak(u);
+  });
+}
+function playUrl(url, run) {
+  return new Promise((done, fail) => {
+    const a = new Audio(url); run.audio = a;
+    a.onended = done; a.onerror = () => fail(new Error('audio'));
+    a.play().catch(fail);
+  });
+}
+async function playQueue(items, btn) {
+  if (btn && speaking && speaking.btn === btn) { stopAll(); return; }
+  stopAll();
+  const run = { btn, stopped: false, audio: null }; speaking = run; setBtn(btn, true);
+  for (const it of items) {
+    if (run.stopped) break;
+    try { if (it.url) await playUrl(it.url, run); else await speakText(it.text); }
+    catch { if (!run.stopped && it.text) await speakText(it.text); } // the recording would not play: read the text instead
+  }
+  if (speaking === run) { setBtn(btn, false); speaking = null; }
+}
+const speak = (text, btn) => playQueue([{ text }], btn);
 
 function renderAreas() {
   const q = $('areaSearch').value.trim().toLowerCase();
@@ -218,12 +252,12 @@ async function loadPlan() {
   const data = await api(`/areas/${chosen.id}?locale=${lang}`);
   const plan = $('plan');
   if (!data.pages.length) { plan.innerHTML = ''; const p = document.createElement('p'); p.textContent = t('noPlan'); plan.append(p); return; }
-  const all = data.pages.map((p) => `${p.title}. ${p.body}`).join('\n');
+  const items = data.pages.map((p) => ({ url: p.audioUrl, text: `${p.title}. ${p.body}` }));
   const listen = document.createElement('button');
   listen.className = 'listen'; listen.type = 'button'; listen.setAttribute('aria-pressed', 'false');
   listen.innerHTML = '<span class="disc"><svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg></span><span class="lbl display"></span>';
   listen.querySelector('.lbl').textContent = t('listen');
-  listen.onclick = () => speak(all, listen);
+  listen.onclick = () => playQueue(items, listen);
   const blocks = data.pages.map((p) => { const d = document.createElement('div'); d.className = 'page'; const h = document.createElement('h3'); h.textContent = p.title; const b = document.createElement('p'); b.textContent = p.body; d.append(h, b); return d; });
   plan.replaceChildren(listen, ...blocks);
 }
@@ -264,7 +298,7 @@ $('askForm').addEventListener('submit', async (e) => {
   catch { addMsg('…', 'bot'); }
 });
 
-document.querySelectorAll('.langs button').forEach((b) => b.onclick = () => { lang = b.dataset.lang; speechSynthesis && speechSynthesis.cancel(); applyLang(); });
+document.querySelectorAll('.langs button').forEach((b) => b.onclick = () => { lang = b.dataset.lang; stopAll(); applyLang(); });
 $('areaSearch').addEventListener('input', renderAreas);
 
 (async () => {

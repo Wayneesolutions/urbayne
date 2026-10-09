@@ -46,3 +46,26 @@ export interface RegionConfig {
   /** Settings that are drafts until counsel confirms them. */
   confirmWithCounsel: string[];
 }
+
+/**
+ * Provincial rules for a Canadian campaign (provincial or municipal race in that province). Every number that is a legal setting
+ * is null until it has been confirmed from the province's own act and election office: the platform asks for it instead of guessing.
+ */
+export interface ProvinceRules {
+  code: string;
+  name: string;
+  electionBody: string;
+  electionBodyUrl: string;
+  /** The acts that govern the race and its money. Named so counsel knows what to check. */
+  acts: string[];
+  /** When the next general election is expected, in words. Always confirm with the election office. */
+  nextGeneral: string;
+  /** null = not yet confirmed. The finance screens show "not set" and ask the official agent to enter the figure from the office. */
+  spendLimitMinor: number | null;
+  contributionLimitMinor: number | null;
+  /** Hours before the polls close in which bulk calls and texts are blocked. null = not confirmed (the national setting applies). */
+  silenceWindowHours: number | null;
+  expenseCategories: string[];
+  /** Settings above that are drafts until the province's election office or counsel confirms them. */
+  confirmWithCounsel: string[];
+}

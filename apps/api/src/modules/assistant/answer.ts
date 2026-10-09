@@ -16,7 +16,8 @@ export function tokens(s: string): string[] {
   return (s.toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu) ?? []).filter((t) => t.length > 1 && !STOP.has(t));
 }
 
-const LOGISTICS = [/\b(vote|voting|poll(ing)?|booth|ballot|advance voting|election day|where do i vote)\b/i, /ਵੋਟ|ਬੂਥ|ਪੋਲਿੰਗ/, /वोट|मतदान|बूथ/];
+const LOGISTICS = [/\b(vote|voting|poll(ing)?|booth|ballot|advance voting|election day|where do i vote)\b/i, /ਵੋਟ|ਬੂਥ|ਪੋਲਿੰਗ/, /वोट|मतदान|बूथ/,
+  /\b(voter|scrutin|bureau de vote|vote par anticipation|jour du scrutin|où voter)\b/i, /\b(boto|bumoto|botohan|presinto|halalan)\b/i];
 
 const TEXT: Record<string, { handoff: string; official: string; disclosure: string }> = {
   en: {
@@ -33,6 +34,17 @@ const TEXT: Record<string, { handoff: string; official: string; disclosure: stri
     handoff: 'इस सवाल का स्वीकृत जवाब अभी मेरे पास नहीं है। अपना नंबर छोड़ें, टीम आपको कॉल करेगी।',
     official: 'वोट की तारीख, जगह और अपने बूथ के लिए चुनाव आयोग की आधिकारिक वेबसाइट देखें:',
     disclosure: 'मैं एक AI सहायक हूँ। मैं सिर्फ़ अभियान द्वारा स्वीकृत जानकारी देता हूँ।',
+  },
+  // French and Tagalog (Canada). Have a native speaker review these before a live campaign uses them.
+  fr: {
+    handoff: "Je n'ai pas encore de réponse approuvée à cette question. Laissez votre numéro et quelqu'un de l'équipe vous rappellera.",
+    official: 'Pour les dates, les lieux et votre bureau de vote, consultez le site officiel des élections :',
+    disclosure: "Je suis un assistant IA. Je ne partage que les renseignements approuvés par la campagne.",
+  },
+  tl: {
+    handoff: 'Wala pa akong aprubadong sagot sa tanong na iyan. Iwan ang inyong numero at may tatawag sa inyo mula sa team.',
+    official: 'Para sa petsa, lugar ng botohan at inyong presinto, tingnan ang opisyal na website ng halalan:',
+    disclosure: 'Isa akong AI assistant. Ibinabahagi ko lamang ang impormasyong inaprubahan ng kampanya.',
   },
 };
 export const assistantText = (locale: string) => TEXT[locale] ?? TEXT.en!;

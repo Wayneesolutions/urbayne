@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { api, ApiError, session } from '../api';
+import { api, ApiError } from '../api';
 import { money, toMinor } from '../money';
 import type { ShellCtx } from '../App';
+import { ExportMenu, Reconcile, ReceiptCell } from './FinanceExtras';
 
 const FLAG: Record<string, string> = {
   MISSING_BILL: 'No bill number', BELOW_RATE_LIST: 'Below district rate list', AMOUNT_MISMATCH: 'Amount ≠ quantity × rate', OVER_SPENDING_LIMIT: 'Over spending limit',
@@ -37,11 +38,6 @@ export function Finance() {
     try { await api(`/t/${t.id}/finance/signoff`, { body: { periodTo: new Date().toISOString().slice(0, 10) } }); load(); }
     catch (x) { setErr(x instanceof ApiError ? x.message : 'Could not sign off.'); }
   }
-  async function exportCsv(k: string) {
-    const r = await fetch(`/api/t/${t.id}/finance/export.csv?kind=${k}`, { headers: { authorization: `Bearer ${session.token}` } });
-    if (!r.ok) { setErr((await r.json()).message); return; }
-    const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = `${k}-register.csv`; a.click();
-  }
   const pct = sum?.share != null ? Math.round(sum.share * 100) : null;
   const pickRate = (id: string) => { const r = rates.find((x) => x.id === id); setF({ ...f, rateListId: id, rate: r ? String(r.rateMinor / 100) : f.rate, description: f.description || (r ? r.item : '') }); };
 
@@ -52,8 +48,6 @@ export function Finance() {
           <p className="muted">{t.region === 'IN' ? 'Day-to-day register, priced against the district rate list, ready for the expenditure observer.' : 'Contributions and expenses, checked against your limits, with receipts numbered automatically.'}</p></div>
         <div className="actions">
           {['owner', 'finance_agent'].includes(role) && <button className="btn" onClick={signoff}>Sign off up to today</button>}
-          {['owner', 'finance_agent'].includes(role) && <button className="btn" onClick={() => exportCsv('expense')}>Export expenses</button>}
-          {['owner', 'finance_agent'].includes(role) && t.region === 'CA' && <button className="btn" onClick={() => exportCsv('contribution')}>Export contributions</button>}
         </div>
       </header>
       {err && <p className="err">{err}</p>}
@@ -83,13 +77,17 @@ export function Finance() {
       </form>
 
       <table className="table">
-        <thead><tr><th>Date</th><th>{kind === 'expense' ? 'Category' : 'Type'}</th><th>Description</th><th>Party</th><th>Amount</th><th>Checks</th></tr></thead>
+        <thead><tr><th>Date</th><th>{kind === 'expense' ? 'Category' : 'Type'}</th><th>Description</th><th>Party</th><th>Amount</th><th>Receipt</th><th>Checks</th></tr></thead>
         <tbody>{entries.map((e) => (
           <tr key={e.id}><td>{e.entryDate}</td><td>{e.kind === 'expense' ? e.category : `Contribution ${e.receiptNo ?? ''}`}</td><td>{e.description}{e.source !== 'manual' && <span className="muted small"> · auto from {e.source === 'event' ? 'events' : 'calls'}</span>}</td>
             <td>{e.partyName}</td><td className="mono-ish">{e.kind === 'contribution' ? '+' : ''}{money(e.amountMinor, cur)}</td>
+            <td><ReceiptCell tenantId={t.id} entry={e} canEdit={['owner', 'manager', 'finance_agent'].includes(role) && !(sum?.lockedUntil && e.entryDate <= sum.lockedUntil)} onChange={load} /></td>
             <td>{e.flags.length ? e.flags.map((x: any) => <span key={x.code} className="badge blocked" title={x.message}>{FLAG[x.code] ?? x.code}</span>) : <span className="badge approved">OK</span>}</td></tr>
         ))}</tbody>
       </table>
+
+      {['owner', 'finance_agent'].includes(role) && <ExportMenu tenantId={t.id} onError={setErr} />}
+      {['owner', 'finance_agent', 'manager'].includes(role) && <Reconcile tenantId={t.id} currency={cur} canEdit={['owner', 'finance_agent'].includes(role)} />}
     </>
   );
 }
