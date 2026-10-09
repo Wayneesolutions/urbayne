@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, authConfig, errText, session } from '../api';
+import { PasswordInput } from '../PasswordInput';
 
 type Type = 'super_admin' | 'admin' | 'user';
 const TYPE_LABEL: Record<Type, string> = { super_admin: 'Super admin', admin: 'Admin (platform staff)', user: 'User (candidate or team member)' };
@@ -35,16 +36,11 @@ export function SuperAdmin() {
     setMsg(null); setSecret(null);
     try { const r = await fn(); if (done) setMsg({ ok: true, text: done(r) }); load(); return r; } catch (x) { setMsg({ ok: false, text: errText(x) }); }
   };
-  const resetPw = async (u: any) => {
-    if (!window.confirm(`Set a new temporary password for ${u.email}? They will be signed out everywhere.`)) return;
-    const r = await act(() => api(`/superadmin/users/${u.id}/reset-password`, { body: {} }));
-    if (r?.temporaryPassword) { setSecret({ who: u.email, password: r.temporaryPassword }); setMsg({ ok: true, text: `New temporary password set for ${u.email}.` }); }
-  };
 
   return (
     <div className="work" style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
       <header className="page-head row">
-        <div><h1>Super admin: accounts</h1><p className="muted">Create people’s accounts, decide what they can do, and reset passwords. Everyone signs in with an email and a password.</p></div>
+        <div><h1>Super admin: accounts</h1><p className="muted">Create people’s accounts and decide what they can do. A forgotten password is reset by the person themselves with “Forgot your password?”. Everyone signs in with an email and a password.</p></div>
         <div className="actions"><Link className="btn" to="/">Back</Link><button className="btn" onClick={() => { session.clear(); nav('/login'); }}>Sign out</button></div>
       </header>
       {msg && <p className={msg.ok ? 'muted' : 'err'} role="status">{msg.text}</p>}
@@ -69,7 +65,7 @@ export function SuperAdmin() {
           <label>Password<select value={f.how} onChange={(e) => setF({ ...f, how: e.target.value as any })}>
             <option value="generate">Generate one for me</option><option value="set">I will type one</option>{mail && <option value="invite">Email them a link to choose</option>}</select></label>
         </div>
-        {f.how === 'set' && <label>Password (at least 10 characters)<input type="text" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} minLength={10} required /></label>}
+        {f.how === 'set' && <label>Password (at least 10 characters)<PasswordInput value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} minLength={10} autoComplete="new-password" required /></label>}
         <p className="muted small">A super admin can manage accounts. An admin is platform staff (packages, billing, support). A user has no platform powers: a candidate creates their campaign after signing in, and team members are added by the campaign owner.</p>
         <button className="btn primary" style={{ alignSelf: 'flex-start' }}>Create account</button>
       </form>
@@ -89,7 +85,6 @@ export function SuperAdmin() {
             <td>{u.disabled ? <span className="chip bad">disabled</span> : u.mustChangePassword ? <span className="chip warn">must change password</span> : <span className="chip good">active</span>}</td>
             <td className="small">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'never'}</td>
             <td className="rowflex">
-              <button className="btn small" onClick={() => resetPw(u)} disabled={!u.email}>New password</button>
               <button className="btn small" onClick={() => act(() => api(`/superadmin/users/${u.id}/send-reset-link`, { body: {} }), () => `Reset link sent to ${u.email}.`)} disabled={!u.email || !mail} title={mail ? '' : 'Email is not set up on this server'}>Email reset link</button>
               <button className="btn small" onClick={() => act(() => api(`/superadmin/users/${u.id}`, { method: 'PATCH', body: { disabled: !u.disabled } }), () => (u.disabled ? 'Account enabled.' : 'Account disabled and signed out.'))}>{u.disabled ? 'Enable' : 'Disable'}</button>
             </td>

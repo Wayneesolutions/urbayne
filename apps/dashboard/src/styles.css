@@ -212,3 +212,10 @@ tr.total td { font-weight: 700; background: #F1F8F4; }
 .checklist li:last-child { border-bottom: 0; }
 .checklist .tick { flex: none; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; font-size: 14px; }
 .checklist .tick.done { background: var(--leaf); border-color: var(--leaf); color: #fff; }
+
+/* Password box with an eye button */
+.pw { position: relative; display: block; }
+.pw input { width: 100%; padding-right: 44px; }
+.pw-eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); border: 0; background: none; color: var(--muted); cursor: pointer; padding: 8px; border-radius: 8px; display: grid; place-items: center; }
+.pw-eye:hover { color: var(--ink); }
+.pw-eye:focus-visible { outline: 3px solid var(--marigold); outline-offset: 1px; }

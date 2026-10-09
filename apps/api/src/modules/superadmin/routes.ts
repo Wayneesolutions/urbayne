@@ -113,29 +113,12 @@ export function superAdminRoutes(deps: Deps) {
     res.json(view(out));
   }));
 
-  /** Sets a new password (given, or generated and shown once). The person must change it at their next sign-in, and is signed out everywhere. */
-  r.post('/users/:id/reset-password', ah(async (req, res) => {
-    const id = uuid.parse(req.params.id);
-    const b = z.object({ password: z.string().max(256).optional() }).strict().parse(req.body ?? {});
-    const temporary = b.password ?? generatePassword();
-    await withTenant(pool, null, async (db) => {
-      const [u] = await db.select().from(schema.users).where(eq(schema.users.id, id));
-      if (!u) throw new HttpError(404, 'NOT_FOUND');
-      const p = b.password ? passwordProblem(b.password, u.email) : null;
-      if (p) throw new HttpError(422, 'WEAK_PASSWORD', p);
-      await db.update(schema.users).set({ passwordHash: await hashPassword(temporary), mustChangePassword: true, passwordChangedAt: new Date(), updatedAt: new Date() }).where(eq(schema.users.id, id));
-      await audit(db, req, 'admin_reset_password', id);
-    });
-    await deps.sessions.revokeAll(id);
-    res.json({ ok: true, temporaryPassword: temporary });
-  }));
-
   /** Emails the person a link to choose their own password. */
   r.post('/users/:id/send-reset-link', ah(async (req, res) => {
     const id = uuid.parse(req.params.id);
     const u = await withTenant(pool, null, async (db) => (await db.select().from(schema.users).where(eq(schema.users.id, id)))[0]);
     if (!u) throw new HttpError(404, 'NOT_FOUND');
-    if (!mailEnabled(deps.env)) throw new HttpError(409, 'EMAIL_NOT_CONFIGURED', 'Email is not set up on this server (SMTP_URL). Use "New password" instead.');
+    if (!mailEnabled(deps.env)) throw new HttpError(409, 'EMAIL_NOT_CONFIGURED', 'Email is not set up on this server (SMTP_URL). Ask the person to use "Forgot your password?" once email is set up.');
     if (!u.email) throw new HttpError(409, 'NO_EMAIL', 'This account has no email address.');
     try { await sendResetLink(deps, u); } catch { throw new HttpError(502, 'EMAIL_NOT_SENT', 'The email could not be sent. Check the mail settings.'); }
     await withTenant(pool, null, (db) => audit(db, req, 'send_reset_link', id));

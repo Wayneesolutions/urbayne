@@ -225,13 +225,9 @@ run('Email login, password reset and the super admin portal (integration)', () =
       await login('admin1@test.local', 'Admin-one-password-1').expect(200);
     });
 
-    it('an admin-reset password is temporary: set by the super admin, changed by the person', async () => {
+    it('there is no way for an admin to set another person password: a forgotten one is reset by the person, from the emailed link', async () => {
       const [{ id }] = await q("SELECT id FROM users WHERE email = 'asha.verma@test.local'");
-      const r = (await request(app).post(`/api/superadmin/users/${id}/reset-password`).set(bearer(sa)).send({}).expect(200)).body;
-      expect(r.temporaryPassword).toHaveLength(16);
-      await login('asha.verma@test.local', 'Handed-over-pass-1').expect(401);
-      const l = (await login('asha.verma@test.local', r.temporaryPassword).expect(200)).body;
-      expect(l.mustChangePassword).toBe(true);
+      await request(app).post(`/api/superadmin/users/${id}/reset-password`).set(bearer(sa)).send({}).expect(404);
       await request(app).post(`/api/superadmin/users/${id}/send-reset-link`).set(bearer(sa)).expect(200);
       expect(mailer.sent.at(-1)).toMatchObject({ to: 'asha.verma@test.local' });
     });
@@ -253,7 +249,7 @@ run('Email login, password reset and the super admin portal (integration)', () =
 
     it('everything done here is in the audit log', async () => {
       const actions = (await q("SELECT DISTINCT action FROM audit_log WHERE entity = 'user'")).map((r) => r.action);
-      expect(actions).toEqual(expect.arrayContaining(['create_account', 'update_account', 'admin_reset_password', 'send_reset_link', 'password_reset', 'password_change']));
+      expect(actions).toEqual(expect.arrayContaining(['create_account', 'update_account', 'send_reset_link', 'password_reset', 'password_change']));
     });
   });
 
@@ -271,11 +267,9 @@ run('Email login, password reset and the super admin portal (integration)', () =
       expect(r.body.error).toBe('RESET_BY_EMAIL_OFF');
       expect((await request(app).get('/api/auth/config').expect(200)).body).toEqual({ passwordReset: true }); // development servers log the email instead
     });
-    it('a super admin still creates accounts and resets passwords by hand', async () => {
+    it('a super admin still creates accounts with a password to hand over', async () => {
       const made = (await request(prod).post('/api/superadmin/users').set(bearer(t)).send({ name: 'Hand', email: 'hand@test.local' }).expect(201)).body;
       await login('hand@test.local', made.temporaryPassword).expect(200);
-      const reset = (await request(prod).post(`/api/superadmin/users/${made.id}/reset-password`).set(bearer(t)).send({}).expect(200)).body;
-      expect(reset.temporaryPassword).toHaveLength(16);
     });
     it('email-only options are refused instead of failing silently', async () => {
       expect((await request(prod).post('/api/superadmin/users').set(bearer(t)).send({ name: 'Inv', email: 'inv@test.local', sendInvite: true }).expect(409)).body.error).toBe('EMAIL_NOT_CONFIGURED');

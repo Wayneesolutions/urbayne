@@ -54,6 +54,9 @@
   .add button { border: 0; border-radius: 14px; background: var(--ink); color: #fff; padding: 0 18px; font-weight: 700; }
   .err { color: var(--rust); }
   .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--ink); color: #fff; border-radius: 999px; padding: 12px 20px; font-weight: 600; }
+  .pw { position: relative; display: block; }
+  .pw input { width: 100%; padding-right: 48px; }
+  .pw-eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); border: 0; background: none; color: inherit; opacity: .7; min-width: 44px; min-height: 44px; display: grid; place-items: center; cursor: pointer; }
 </style>
 </head>
 <body>

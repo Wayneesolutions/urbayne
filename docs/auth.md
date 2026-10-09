@@ -19,7 +19,7 @@ A password someone else chose (generated, typed, or an admin reset) is **tempora
 
 ## Forgot password
 
-On the sign-in page, **Forgot your password?** asks for the email and sends a link (`/admin/reset-password?token=...`). The answer is the same whether or not the email has an account, so it cannot be used to find out who has one. The link works **once, for one hour**; only a hash of it is stored; a newer link cancels older ones; asking again is limited to 3 per hour per email. Setting a new password signs the person out on every device. A super admin can also reset a password directly or email the link.
+On the sign-in page, **Forgot your password?** asks for the email and sends a link (`/admin/reset-password?token=...`). The answer is the same whether or not the email has an account, so it cannot be used to find out who has one. The link works **once, for one hour**; only a hash of it is stored; a newer link cancels older ones; asking again is limited to 3 per hour per email. Setting a new password signs the person out on every device. A super admin can email the link to someone, but cannot set or see anyone's password after creating the account: a forgotten password is always reset by the person themselves.
 
 ## Rules
 

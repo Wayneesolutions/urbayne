@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, ApiError, authConfig, session } from '../api';
+import { PasswordInput } from '../PasswordInput';
 
 export function Login() {
   const [email, setEmail] = useState('');
@@ -29,7 +30,7 @@ export function Login() {
         <h1>Sign in</h1>
         <form onSubmit={submit} className="stack">
           <label>Email<input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus required /></label>
-          <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
+          <label>Password<PasswordInput autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
           <button className="btn primary" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
           {reset ? <Link to="/forgot-password" className="small">Forgot your password?</Link> : <span className="muted small">Forgot your password? Ask your administrator to reset it.</span>}
         </form>
