@@ -54,7 +54,7 @@ export function Agency() {
         <label>Link another campaign<input value={code} onChange={(e) => setCode(e.target.value)} placeholder="AG-XXXXX-XXXXX" required /></label>
         <button className="btn primary">Link</button>
       </form>}
-      <section className="panel"><h2>Your team</h2><ul>{a.members.map((m: any) => <li key={m.userId}>{m.name ?? m.phone} <span className="muted">· {m.role}</span></li>)}</ul></section>
+      <section className="panel"><h2>Your team</h2><ul>{a.members.map((m: any) => <li key={m.userId}>{m.name ?? m.email} <span className="muted">· {m.role}</span></li>)}</ul></section>
     </div>
   );
 }

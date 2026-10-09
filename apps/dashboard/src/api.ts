@@ -27,6 +27,8 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   if (res.status === 401 && !retried && (await refresh())) return api(path, opts, true);
   if (opts.raw) return res as unknown as T;
   const body = res.headers.get('content-type')?.includes('json') ? await res.json() : await res.text();
+  // A password someone else chose must be replaced before anything else works.
+  if (res.status === 403 && body?.error === 'PASSWORD_CHANGE_REQUIRED' && !location.pathname.endsWith('/change-password')) location.assign('/admin/change-password');
   if (!res.ok) throw new ApiError(res.status, body?.error ?? 'ERROR', body?.message ?? body?.error ?? res.statusText, body);
   return body as T;
 }

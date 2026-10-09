@@ -1,48 +1,37 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { api, session } from '../api';
+import { Link, useNavigate } from 'react-router-dom';
+import { api, ApiError, session } from '../api';
 
 export function Login() {
-  const [phone, setPhone] = useState('');
-  const [code, setCode] = useState('');
-  const [sent, setSent] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
   const nav = useNavigate();
 
-  async function request(e: React.FormEvent) {
-    e.preventDefault(); setErr('');
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setErr(''); setBusy(true);
     try {
-      const r = await api('/auth/otp/request', { body: { phone } });
-      setSent(true);
-      if (r.devCode) setCode(r.devCode); // demo servers only
-    } catch (x: any) { setErr(x.message); }
-  }
-  async function verify(e: React.FormEvent) {
-    e.preventDefault(); setErr('');
-    try {
-      const r = await api('/auth/otp/verify', { body: { phone, code } });
+      const r = await api('/auth/login', { body: { email, password } });
       session.set(r.accessToken, r.refreshToken);
-      nav('/');
-    } catch { setErr('That code did not work. Check it and try again, or request a new one.'); }
+      // A password someone else chose must be replaced before anything else (kept only in this page's navigation state, not stored).
+      if (r.mustChangePassword) nav('/change-password', { state: { forced: true, current: password } });
+      else nav('/');
+    } catch (x) {
+      setErr(x instanceof ApiError && x.status === 429 ? x.message : 'Email or password is not right.');
+    } finally { setBusy(false); }
   }
   return (
     <div className="centered">
       <div className="panel narrow">
         <h1>Sign in</h1>
-        {!sent ? (
-          <form onSubmit={request} className="stack">
-            <label>Mobile number<input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98…  or  +1 204…" inputMode="tel" autoFocus /></label>
-            <button className="btn primary">Send code</button>
-          </form>
-        ) : (
-          <form onSubmit={verify} className="stack">
-            <p className="muted">We sent a 6-digit code to {phone}.</p>
-            <label>Code<input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" maxLength={6} autoFocus /></label>
-            <button className="btn primary">Sign in</button>
-            <button type="button" className="linklike" onClick={() => { setSent(false); setCode(''); }}>Use a different number</button>
-          </form>
-        )}
-        {err && <p className="err">{err}</p>}
+        <form onSubmit={submit} className="stack">
+          <label>Email<input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus required /></label>
+          <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
+          <button className="btn primary" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+          <Link to="/forgot-password" className="small">Forgot your password?</Link>
+        </form>
+        {err && <p className="err" role="alert">{err}</p>}
       </div>
     </div>
   );

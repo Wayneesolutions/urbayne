@@ -5,7 +5,7 @@ container_image     = "111111111111.dkr.ecr.ca-central-1.amazonaws.com/campaign-
 alarm_email         = "ops@example.com"
 
 app_env = {
-  OTP_PROVIDER       = "twilio"
+  MAIL_FROM          = "Campaign Suite <no-reply@example.com>"
   FX_USD_TO_CAD      = "1.40"
   SENTRY_ENVIRONMENT = "prod-ca"
 }
@@ -18,5 +18,8 @@ app_env = {
 #   TWILIO_ACCOUNT_SID           = "AC..."
 #   TWILIO_AUTH_TOKEN            = "..."
 #   TWILIO_MESSAGING_SERVICE_SID = "MG..."
+#   SMTP_URL                     = "smtps://user:password@smtp.example.com:465"   # required: password reset email
+#   SUPERADMIN_EMAIL             = "you@example.com"                               # first super admin (optional; remove after first sign-in)
+#   SUPERADMIN_PASSWORD          = "a-long-temporary-password"
 #   SENTRY_DSN                   = "https://..."
 # }

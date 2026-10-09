@@ -118,18 +118,22 @@ variable "purge_schedule" {
 }
 
 variable "app_env" {
-  description = "Non-secret settings passed to the app, for example OTP_PROVIDER, FX_USD_TO_INR, DLT_SENDER_ID, DLT_OTP_TEMPLATE_ID, DLT_OTP_TEMPLATE_TEXT, SENTRY_ENVIRONMENT."
+  description = "Non-secret settings passed to the app, for example MAIL_FROM, FX_USD_TO_INR, DLT_SENDER_ID, SENTRY_ENVIRONMENT."
   type        = map(string)
   default     = {}
   validation {
-    condition     = contains(["twilio", "dlt"], lookup(var.app_env, "OTP_PROVIDER", ""))
-    error_message = "app_env must set OTP_PROVIDER to twilio (Canada) or dlt (India): console codes are refused in production."
+    condition     = lookup(var.app_env, "MAIL_FROM", "") != ""
+    error_message = "app_env must set MAIL_FROM (the sender of password reset emails, for example \"Campaign Suite <no-reply@example.com>\")."
   }
 }
 
 variable "provider_secrets" {
-  description = "Secret settings for the providers of this region: VAPI_API_KEY, VAPI_PHONE_NUMBER_ID, VAPI_ASSISTANT_ID, VAPI_WEBHOOK_SECRET, TWILIO_*, DLT_AUTH_KEY, SENTRY_DSN, ANTHROPIC_API_KEY. Stored in Secrets Manager (and, encrypted, in the Terraform state: keep the state private)."
+  description = "Secret settings for the providers of this region: VAPI_API_KEY, VAPI_PHONE_NUMBER_ID, VAPI_ASSISTANT_ID, VAPI_WEBHOOK_SECRET, TWILIO_*, DLT_AUTH_KEY, SMTP_URL (required: password reset email), SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD (first super admin, optional), SENTRY_DSN, ANTHROPIC_API_KEY. Stored in Secrets Manager (and, encrypted, in the Terraform state: keep the state private)."
   type        = map(string)
   default     = {}
   sensitive   = true
+  validation {
+    condition     = contains(nonsensitive(keys(var.provider_secrets)), "SMTP_URL")
+    error_message = "provider_secrets must include SMTP_URL: people sign in with email and passwords, and reset links are sent by email."
+  }
 }
