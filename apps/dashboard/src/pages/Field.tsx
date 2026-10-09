@@ -46,7 +46,7 @@ export function Field() {
         <label>Area<select value={form.geoAreaId} onChange={(e) => setForm({ ...form, geoAreaId: e.target.value, name: form.name || areas.find((a) => a.id === e.target.value)?.nameEn || '' })} required>
           <option value="">Choose…</option>{areas.map((a) => <option key={a.id} value={a.id}>{a.nameEn}</option>)}</select></label>
         <label>Name<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
-        <label>Worker<select value={form.assignedUserId} onChange={(e) => setForm({ ...form, assignedUserId: e.target.value })}><option value="">Unassigned</option>{workers.map((w) => <option key={w.userId} value={w.userId}>{w.name ?? w.phone}</option>)}</select></label>
+        <label>Worker<select value={form.assignedUserId} onChange={(e) => setForm({ ...form, assignedUserId: e.target.value })}><option value="">Unassigned</option>{workers.map((w) => <option key={w.userId} value={w.userId}>{w.name ?? w.email}</option>)}</select></label>
         <button className="btn primary">Create area list</button>
         {err && <p className="err">{err}</p>}
       </form>
@@ -55,7 +55,7 @@ export function Field() {
         <tbody>{turfs.map((x) => {
           const pct = x.households ? Math.min(100, Math.round((x.visited / x.households) * 100)) : 0;
           return <tr key={x.id}><td>{x.name}</td>
-            <td><select value={x.assignedUserId ?? ''} onChange={(e) => assign(x.id, e.target.value)} aria-label={`Worker for ${x.name}`}><option value="">Unassigned</option>{workers.map((w) => <option key={w.userId} value={w.userId}>{w.name ?? w.phone}</option>)}</select></td>
+            <td><select value={x.assignedUserId ?? ''} onChange={(e) => assign(x.id, e.target.value)} aria-label={`Worker for ${x.name}`}><option value="">Unassigned</option>{workers.map((w) => <option key={w.userId} value={w.userId}>{w.name ?? w.email}</option>)}</select></td>
             <td>{x.households}</td><td>{x.visited}</td><td style={{ minWidth: 160 }}><div className="bar thin"><span style={{ width: `${pct}%` }} /></div><span className="muted small">{pct}%</span></td></tr>;
         })}</tbody>
       </table>

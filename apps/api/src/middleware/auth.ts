@@ -10,7 +10,9 @@ export const requireUser = (deps: Deps): RequestHandler => (req, _res, next) => 
   if (!h?.startsWith('Bearer ')) return next(new HttpError(401, 'UNAUTHENTICATED'));
   try {
     const c = verifyAccess(h.slice(7), [deps.env.JWT_SECRET, deps.env.JWT_SECRET_PREVIOUS ?? '']);
-    req.user = { id: c.sub, wes: Boolean(c.wes) };
+    req.user = { id: c.sub, wes: Boolean(c.wes), sa: Boolean(c.sa) };
+    // A password someone else chose must be replaced first: until then only the sign-in and password routes work.
+    if (c.mcp && !req.baseUrl.startsWith('/api/auth')) return next(new HttpError(403, 'PASSWORD_CHANGE_REQUIRED', 'Choose your own password first.'));
     next();
   } catch {
     next(new HttpError(401, 'UNAUTHENTICATED'));

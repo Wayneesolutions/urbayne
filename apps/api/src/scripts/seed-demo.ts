@@ -7,11 +7,12 @@
  */
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { inArray } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 import { schema } from '@cs/db';
 import { IN, CA } from '@cs/regions';
 import { renderDisclosure } from '@cs/compliance';
 import { encrypt, hashPhone } from '../lib/crypto.js';
+import { hashPassword } from '../lib/password.js';
 import { shortCode } from '../lib/util.js';
 
 const url = process.env.DATABASE_URL;
@@ -23,10 +24,13 @@ const pool = new pg.Pool({ connectionString: url });
 const db = drizzle(pool, { schema });
 const SLUGS = ['demo-ludhiana', 'demo-winnipeg-ward3'];
 
-async function user(phone: string, name: string) {
+/** Demo accounts all share one password. It is for demo servers only: never seed these on a real deployment. */
+const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? 'Demo-password-123';
+async function user(phone: string, name: string, email: string) {
   const phoneHash = hashPhone(phone, HASH!);
-  const [u] = await db.insert(schema.users).values({ phoneHash, phoneEnc: encrypt(phone, ENC!), name })
-    .onConflictDoUpdate({ target: schema.users.phoneHash, set: { name } }).returning();
+  const passwordHash = await hashPassword(DEMO_PASSWORD);
+  const [u] = await db.insert(schema.users).values({ email, phoneHash, phoneEnc: encrypt(phone, ENC!), name, passwordHash, passwordChangedAt: new Date() })
+    .onConflictDoUpdate({ target: schema.users.email, targetWhere: sql`email is not null`, set: { name, phoneHash, phoneEnc: encrypt(phone, ENC!), passwordHash, disabledAt: null, mustChangePassword: false } }).returning();
   return u!;
 }
 
@@ -36,8 +40,8 @@ async function main() {
     (await db.select({ id: schema.tenants.id }).from(schema.tenants).where(inArray(schema.tenants.slug, SLUGS))).map((x) => x.id).concat(['00000000-0000-0000-0000-000000000000'])));
   await db.delete(schema.tenants).where(inArray(schema.tenants.slug, SLUGS));
 
-  const inOwner = await user('+919999900001', 'Demo Manager (India)');
-  const caOwner = await user('+12045550001', 'Demo Manager (Canada)');
+  const inOwner = await user('+919999900001', 'Demo Manager (India)', 'manager.in@demo.local');
+  const caOwner = await user('+12045550001', 'Demo Manager (Canada)', 'manager.ca@demo.local');
 
   // ---------------- INDIA ----------------
   const [tin] = await db.insert(schema.tenants).values({
@@ -143,9 +147,10 @@ async function main() {
   await seedPhase2(tin!, tca!, inOwner.id, caOwner.id, inAreas.map((a) => a.id), caAreas.map((a) => a.id));
 
   console.log('Demo seeded.');
-  console.log(`  India : /v/demo-ludhiana   login ${'+919999900001'}   script ${inScript!.id}`);
-  console.log(`  Canada: /v/demo-winnipeg-ward3   login ${'+12045550001'}`);
-  console.log('  Worker app: /w   India worker +919999900002, Canada canvasser +12045550002');
+  console.log(`  India : /v/demo-ludhiana   login manager.in@demo.local   script ${inScript!.id}`);
+  console.log(`  Canada: /v/demo-winnipeg-ward3   login manager.ca@demo.local`);
+  console.log(`  Worker app: /w   worker.in@demo.local (India), worker.ca@demo.local (Canada)`);
+  console.log(`  Password for all demo accounts: ${DEMO_PASSWORD}`);
   await pool.end();
 }
 
@@ -158,7 +163,7 @@ async function seedPhase2(tin: typeof schema.tenants.$inferSelect, tca: typeof s
     [tin, inOwnerId, inAreaIds, '+919999900002', 'Harjit Singh (demo worker)', 'IN'],
     [tca, caOwnerId, caAreaIds, '+12045550002', 'Priya (demo canvasser)', 'CA'],
   ] as const) {
-    const worker = await user(workerPhone, workerName);
+    const worker = await user(workerPhone, workerName, region === 'IN' ? 'worker.in@demo.local' : 'worker.ca@demo.local');
     await db.insert(schema.memberships).values({ tenantId: t.id, userId: worker.id, role: 'field_worker' });
     const turfs = await db.insert(schema.turfs).values(areaIds.slice(0, 4).map((geoAreaId, i) => ({
       tenantId: t.id, geoAreaId, name: `Area list ${i + 1}`, assignedUserId: i < 2 ? worker.id : ownerId,

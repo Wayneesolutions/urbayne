@@ -7,6 +7,7 @@ import { PACKS, BLANK_OPEN, FILING_FORMATS, filingFormat, filingFormatsFor, getP
 import { renderDisclosure } from '@cs/compliance';
 import { createApp } from '../src/app.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor } from './auth-helper.js';
 
 const OWNER_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
@@ -58,14 +59,14 @@ run('Election packs (integration)', () => {
   let inTenant = '', mbTenant = '';
 
   async function login(a: typeof inApp, phone: string) {
-    const r = await request(a).post('/api/auth/otp/request').send({ phone });
-    return (await request(a).post('/api/auth/otp/verify').send({ phone, code: r.body.devCode })).body.accessToken as string;
+    const r = await ensureUser(a, phone);
+    return (await tokenFor(a, phone)).body.accessToken as string;
   }
   const bin = (res: request.Response, cb: (e: Error | null, b: Buffer) => void) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); };
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
-    await owner.query('TRUNCATE audit_log, finance_signoffs, finance_entries, content_items, memberships, tenants, otp_codes, users CASCADE');
+    await owner.query('TRUNCATE audit_log, finance_signoffs, finance_entries, content_items, memberships, tenants, users CASCADE');
     pool = new pg.Pool({ connectionString: APP_URL });
     inApp = createApp({ env: testEnv(), pool });
     caApp = createApp({ env: testEnv({ DEPLOY_REGION: 'CA' }), pool });

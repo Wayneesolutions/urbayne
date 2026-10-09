@@ -33,6 +33,8 @@ import { resultsRoutes } from './modules/results/routes.js';
 import { MemoryRateStore, RedisRateStore } from './lib/rate-limit.js';
 import { MemorySessions, RedisSessions } from './lib/sessions.js';
 import { createStore } from './lib/storage.js';
+import { createMailer } from './lib/mailer.js';
+import { superAdminRoutes } from './modules/superadmin/routes.js';
 import { fileRoutes } from './modules/files/routes.js';
 import { fontsRouter } from './lib/fonts.js';
 import { billingRoutes } from './modules/billing/routes.js';
@@ -44,13 +46,15 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 
 /** Fills in rate limits and sessions: Redis-backed when Redis is configured, in-memory otherwise (one server only). */
 export function resolveDeps(init: DepsInit): Deps {
+  const log = init.log ?? createLogger({ level: init.env.LOG_LEVEL ?? (init.env.NODE_ENV === 'test' ? 'silent' : 'info') });
   return {
     ...init,
     rateStore: init.rateStore ?? (init.redis ? new RedisRateStore(init.redis) : new MemoryRateStore()),
     sessions: init.sessions ?? (init.redis ? new RedisSessions(init.redis) : new MemorySessions()),
-    log: init.log ?? createLogger({ level: init.env.LOG_LEVEL ?? (init.env.NODE_ENV === 'test' ? 'silent' : 'info') }),
+    log,
     reporter: init.reporter ?? new NoopReporter(),
     store: init.store ?? createStore(init.env),
+    mailer: init.mailer ?? createMailer(init.env, log),
   };
 }
 
@@ -115,6 +119,7 @@ export function createApp(init: DepsInit) {
   app.use('/api/t/:tenantId/billing', authed, billingRoutes(deps));
   app.use('/api/t/:tenantId/pack', authed, tenantPackRoutes(deps));
   app.use('/api/packs', packRoutes(deps));
+  app.use('/api/superadmin', superAdminRoutes(deps));
   app.use('/api/agencies', authed, agencyRoutes(deps));
   app.use('/api/t/:tenantId/agency', authed, tenantAgencyRoutes(deps));
   app.use('/api/admin', agencyAdminRoutes(deps));

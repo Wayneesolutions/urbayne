@@ -9,13 +9,14 @@ import { randomBytes } from 'node:crypto';
 import { createApp } from '../src/app.js';
 import type { Env } from '../src/env.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor } from './auth-helper.js';
 import { IN } from '@cs/regions';
 
 const OWNER_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
 const run = OWNER_URL && APP_URL ? describe : describe.skip;
 
-const env: Env = testEnv({ PUBLIC_BASE_URL: 'http://test.local', DEV_RETURN_OTP: 'false' });
+const env: Env = testEnv({ PUBLIC_BASE_URL: 'http://test.local', DEV_RETURN_RESET_TOKEN: 'false' });
 
 run('Phase 1 (integration)', () => {
   let owner: pg.Pool, pool: pg.Pool, app: ReturnType<typeof createApp>;
@@ -26,15 +27,15 @@ run('Phase 1 (integration)', () => {
 
   async function login(phone: string) {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    await request(app).post('/api/auth/otp/request').send({ phone }).expect(200);
+    await ensureUser(app, phone).expect(200);
     const code = String(spy.mock.calls.at(-1)?.[0]).split('-> ')[1]!;
     spy.mockRestore();
-    return (await request(app).post('/api/auth/otp/verify').send({ phone, code }).expect(200)).body.accessToken as string;
+    return (await tokenFor(app, phone).expect(200)).body.accessToken as string;
   }
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
-    await owner.query('TRUNCATE audit_log, assistant_questions, share_links, survey_responses, interactions, campaign_runs, consents, contacts, content_items, geo_areas, memberships, tenants, otp_codes, users CASCADE');
+    await owner.query('TRUNCATE audit_log, assistant_questions, share_links, survey_responses, interactions, campaign_runs, consents, contacts, content_items, geo_areas, memberships, tenants, users CASCADE');
     pool = new pg.Pool({ connectionString: APP_URL });
     app = createApp({ env, pool, now: () => clock });
     token = await login('+919800000101');

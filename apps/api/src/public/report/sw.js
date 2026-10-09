@@ -1,6 +1,6 @@
 // App shell cache. Data lives in IndexedDB (see app.js), so the app opens and records numbers with no signal.
 // Network first (so a new release reaches phones as soon as they have signal), the saved copy when the network is slow or gone.
-const SHELL = 'results-shell-v2';
+const SHELL = 'results-shell-v3';
 const FILES = ['/r/', '/r/index.html', '/r/app.js', '/r/manifest.webmanifest', '/r/icon.svg'];
 self.addEventListener('install', (e) => e.waitUntil(caches.open(SHELL).then((c) => c.addAll(FILES)).then(() => self.skipWaiting())));
 self.addEventListener('activate', (e) => e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== SHELL).map((k) => caches.delete(k)))).then(() => self.clients.claim())));

@@ -16,6 +16,12 @@
       supporter: 'Supporter', undecided: 'Undecided', not_interested: 'Not interested', not_home: 'Not home', needs_help: 'Needs help', wants_sign: 'Wants a sign',
       note: 'Note (optional)', save: 'Save', saved: 'Saved', addDoor: 'Add a door not on the list', add: 'Add', signOut: 'Sign out', badCode: 'That code did not work. Try again.' },
   };
+  // Sign-in strings (email and password).
+  const EXTRA = {
+    pa: { email: 'ਈਮੇਲ', password: 'ਪਾਸਵਰਡ', newPassword: 'ਨਵਾਂ ਪਾਸਵਰਡ (ਘੱਟੋ-ਘੱਟ 10 ਅੱਖਰ)', chooseNew: 'ਆਪਣਾ ਨਵਾਂ ਪਾਸਵਰਡ ਚੁਣੋ।', badLogin: 'ਈਮੇਲ ਜਾਂ ਪਾਸਵਰਡ ਸਹੀ ਨਹੀਂ।' },
+    hi: { email: 'ईमेल', password: 'पासवर्ड', newPassword: 'नया पासवर्ड (कम से कम 10 अक्षर)', chooseNew: 'अपना नया पासवर्ड चुनें।', badLogin: 'ईमेल या पासवर्ड सही नहीं।' },
+    en: { email: 'Email', password: 'Password', newPassword: 'New password (at least 10 characters)', chooseNew: 'Choose your own new password.', badLogin: 'Email or password is not right.' },
+  };
   const ICONS = {
     supporter: '<path d="m5 12 5 5L20 7"/>', undecided: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14m0 3h.01"/>',
     not_interested: '<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>', not_home: '<path d="M3 11 12 4l9 7v9H3z"/><path d="M9 20v-6h6v6"/>',
@@ -36,8 +42,8 @@
   const queueDel = (ids) => store('queue', 'readwrite', (s) => ids.forEach((id) => s.delete(id)));
 
   // ---------- state ----------
-  const S = { lang: localStorage.getItem('booth.lang') || 'pa', token: localStorage.getItem('booth.token'), refresh: localStorage.getItem('booth.refresh'), tenant: localStorage.getItem('booth.tenant'), region: localStorage.getItem('booth.region') || 'IN', turfs: [], queue: [], view: 'list', turfId: null, house: null, loginStep: 'phone', phone: '', devCode: '', err: '' };
-  const t = (k) => (T[S.lang] || T.en)[k] || T.en[k];
+  const S = { lang: localStorage.getItem('booth.lang') || 'pa', token: localStorage.getItem('booth.token'), refresh: localStorage.getItem('booth.refresh'), tenant: localStorage.getItem('booth.tenant'), region: localStorage.getItem('booth.region') || 'IN', turfs: [], queue: [], view: 'list', turfId: null, house: null, loginStep: 'login', email: '', pw: '', err: '' };
+  const t = (k) => (T[S.lang] || T.en)[k] || (EXTRA[S.lang] || EXTRA.en)[k] || T.en[k] || EXTRA.en[k];
   const $ = (h) => { const d = document.createElement('div'); d.innerHTML = h.trim(); return d.firstElementChild; };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => { const r = (Math.random() * 16) | 0; return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16); }));
@@ -147,28 +153,32 @@
   function loginView() {
     const m = document.createElement('main');
     m.append(langs());
-    const c = $(`<form class="card"><h1 style="margin-top:0">${esc(t('title'))}</h1>${S.loginStep === 'phone'
-      ? `<label>${esc(t('phone'))}<input inputmode="tel" autocomplete="tel" value="${esc(S.phone)}" required></label><button class="primary">${esc(t('sendCode'))}</button>`
-      : `<label>${esc(t('code'))}<input inputmode="numeric" maxlength="6" value="${esc(S.devCode)}" required></label><button class="primary">${esc(t('signIn'))}</button>`}
+    const change = S.loginStep === 'change';
+    const c = $(`<form class="card"><h1 style="margin-top:0">${esc(t('title'))}</h1>${change
+      ? `<p>${esc(t('chooseNew'))}</p><label>${esc(t('newPassword'))}<input type="password" autocomplete="new-password" minlength="10" required></label><button class="primary">${esc(t('signIn'))}</button>`
+      : `<label>${esc(t('email'))}<input type="email" autocomplete="username" value="${esc(S.email)}" required></label><label>${esc(t('password'))}<input type="password" autocomplete="current-password" required></label><button class="primary">${esc(t('signIn'))}</button>`}
       ${S.err ? `<p class="err">${esc(S.err)}</p>` : ''}</form>`);
     c.onsubmit = async (e) => {
       e.preventDefault(); S.err = '';
-      const v = c.querySelector('input').value.trim();
+      const inputs = c.querySelectorAll('input');
       try {
-        if (S.loginStep === 'phone') {
-          S.phone = v.startsWith('+') ? v : `+91${v.replace(/\D/g, '').slice(-10)}`;
-          const r = await api('/auth/otp/request', { body: { phone: S.phone } });
-          S.devCode = r.devCode || ''; S.loginStep = 'code';
+        let r;
+        if (!change) {
+          S.email = inputs[0].value.trim(); S.pw = inputs[1].value;
+          r = await api('/auth/login', { body: { email: S.email, password: S.pw } });
+          // A password someone else chose must be replaced first.
+          if (r.mustChangePassword) { S.token = r.accessToken; S.loginStep = 'change'; render(); return; }
         } else {
-          const r = await api('/auth/otp/verify', { body: { phone: S.phone, code: v } });
-          S.token = r.accessToken; S.refresh = r.refreshToken;
-          localStorage.setItem('booth.token', S.token); localStorage.setItem('booth.refresh', S.refresh);
-          const me = await api('/auth/me');
-          const camp = me.campaigns.find((x) => x.role === 'field_worker') || me.campaigns[0];
-          if (camp) { S.tenant = camp.tenant_id; S.region = camp.region; localStorage.setItem('booth.tenant', S.tenant); localStorage.setItem('booth.region', S.region); }
-          await sync();
+          r = await api('/auth/change-password', { body: { currentPassword: S.pw, newPassword: inputs[0].value } });
         }
-      } catch (x) { S.err = S.loginStep === 'code' ? t('badCode') : x.message; }
+        S.pw = ''; S.loginStep = 'login';
+        S.token = r.accessToken; S.refresh = r.refreshToken;
+        localStorage.setItem('booth.token', S.token); localStorage.setItem('booth.refresh', S.refresh);
+        const me = await api('/auth/me');
+        const camp = me.campaigns.find((x) => x.role === 'field_worker') || me.campaigns[0];
+        if (camp) { S.tenant = camp.tenant_id; S.region = camp.region; localStorage.setItem('booth.tenant', S.tenant); localStorage.setItem('booth.region', S.region); }
+        await sync();
+      } catch (x) { S.err = x.status === 401 ? t('badLogin') : x.message; }
       render();
     };
     m.append(c);

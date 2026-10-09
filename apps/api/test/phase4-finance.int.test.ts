@@ -6,6 +6,7 @@ import { createApp } from '../src/app.js';
 import { MemoryStore } from '../src/lib/storage.js';
 import { loadEnv } from '../src/env.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor } from './auth-helper.js';
 
 const OWNER_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
@@ -27,8 +28,8 @@ run('Phase 4: receipts and bank reconciliation (integration)', () => {
   const upload = (url: string, body: Buffer, type = 'application/octet-stream', tk = token) => request(app).post(url).set(auth(tk)).set('Content-Type', type).set('X-File-Name', encodeURIComponent('receipt 1.jpg')).send(body);
 
   async function signIn(phone: string) {
-    const r = await request(app).post('/api/auth/otp/request').send({ phone });
-    return (await request(app).post('/api/auth/otp/verify').send({ phone, code: r.body.devCode })).body.accessToken as string;
+    const r = await ensureUser(app, phone);
+    return (await tokenFor(app, phone)).body.accessToken as string;
   }
   async function newTenant(tk: string, seat: string) {
     return (await request(app).post('/api/tenants').set(auth(tk)).send({ raceType: 'assembly', seatCode: seat, electionDate: '2027-02-20', campaignName: `Finance ${seat}` })).body.id as string;
@@ -36,7 +37,7 @@ run('Phase 4: receipts and bank reconciliation (integration)', () => {
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
-    await owner.query('TRUNCATE audit_log, bank_lines, bank_statements, finance_entries, stored_files, memberships, tenants, otp_codes, users CASCADE');
+    await owner.query('TRUNCATE audit_log, bank_lines, bank_statements, finance_entries, stored_files, memberships, tenants, users CASCADE');
     pool = new pg.Pool({ connectionString: APP_URL });
     app = createApp({ env, pool, store });
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -175,7 +176,7 @@ run('Phase 4: receipts and bank reconciliation (integration)', () => {
 describe('Storage settings', () => {
   const base = { APP_DATABASE_URL: 'postgres://x:y@localhost/db', JWT_SECRET: 'x'.repeat(20), JWT_REFRESH_SECRET: 'y'.repeat(20), DEPLOY_REGION: 'IN', PHONE_ENC_KEY: 'a'.repeat(44), PHONE_HASH_KEY: 'b'.repeat(44) };
   it('production must use the region bucket, not a folder on the server', () => {
-    expect(() => loadEnv({ ...base, NODE_ENV: 'production', REDIS_URL: 'redis://x', OTP_PROVIDER: 'twilio', TWILIO_ACCOUNT_SID: 'a', TWILIO_AUTH_TOKEN: 'b', TWILIO_MESSAGING_SERVICE_SID: 'c', EVIDENCE_SIGNING_KEY: 'k'.repeat(32) } as any)).toThrow(/STORAGE_DRIVER=s3/);
+    expect(() => loadEnv({ ...base, NODE_ENV: 'production', REDIS_URL: 'redis://x', TWILIO_ACCOUNT_SID: 'a', TWILIO_AUTH_TOKEN: 'b', TWILIO_MESSAGING_SERVICE_SID: 'c', EVIDENCE_SIGNING_KEY: 'k'.repeat(32) } as any)).toThrow(/STORAGE_DRIVER=s3/);
   });
   it('files cannot be pointed at another region (data residency)', () => {
     expect(() => loadEnv({ ...base, STORAGE_DRIVER: 's3', FILES_BUCKET: 'files', FILES_REGION: 'us-east-1' } as any)).toThrow(/data region/);

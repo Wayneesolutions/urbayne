@@ -4,6 +4,7 @@ import request from 'supertest';
 import pg from 'pg';
 import { createApp } from '../src/app.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor, emailFor } from './auth-helper.js';
 
 const OWNER_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
@@ -18,8 +19,8 @@ run('Agency view (integration)', () => {
   const env = testEnv();
 
   async function login(phone: string) {
-    const r = await request(app).post('/api/auth/otp/request').send({ phone });
-    return (await request(app).post('/api/auth/otp/verify').send({ phone, code: r.body.devCode })).body.accessToken as string;
+    const r = await ensureUser(app, phone);
+    return (await tokenFor(app, phone)).body.accessToken as string;
   }
   async function campaign(who: string, seat: string, name: string, electionDate = '2027-02-20') {
     const id = (await request(app).post('/api/tenants').set(as(who)).send({ raceType: 'assembly', seatCode: seat, electionDate, campaignName: name })).body.id as string;
@@ -30,7 +31,7 @@ run('Agency view (integration)', () => {
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
-    await owner.query('TRUNCATE audit_log, agency_links, agency_invites, agency_members, agencies, contacts, finance_entries, content_items, memberships, tenants, otp_codes, users CASCADE');
+    await owner.query('TRUNCATE audit_log, agency_links, agency_invites, agency_members, agencies, contacts, finance_entries, content_items, memberships, tenants, users CASCADE');
     pool = new pg.Pool({ connectionString: APP_URL });
     app = createApp({ env, pool });
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -48,7 +49,7 @@ run('Agency view (integration)', () => {
   let agencyId = '';
 
   it('only platform staff can create an agency', async () => {
-    const body = { name: 'Rajya Consulting', slug: 'rajya', brandName: 'Rajya Campaign Desk', primaryColor: '#1F4E79', supportEmail: 'help@rajya.example', adminPhone: '+919800001004' };
+    const body = { name: 'Rajya Consulting', slug: 'rajya', brandName: 'Rajya Campaign Desk', primaryColor: '#1F4E79', supportEmail: 'help@rajya.example', adminEmail: emailFor('+919800001004') };
     await request(app).post('/api/admin/agencies').set(as('cand1')).send(body).expect(403);
     await request(app).post('/api/admin/agencies').set(as('wes')).send({ ...body, primaryColor: 'blue' }).expect(400);
     const a = (await request(app).post('/api/admin/agencies').set(as('wes')).send(body).expect(201)).body;
@@ -61,12 +62,12 @@ run('Agency view (integration)', () => {
 
   it('the agency administrator manages the agency team; others cannot see it at all', async () => {
     await request(app).get(`/api/agencies/${agencyId}`).set(as('stranger')).expect(404);
-    await request(app).post(`/api/agencies/${agencyId}/members`).set(as('agStaff')).send({ phone: '+919800001005' }).expect(404);
-    await request(app).post(`/api/agencies/${agencyId}/members`).set(as('agAdmin')).send({ phone: '+919800001005', role: 'staff' }).expect(201);
-    await request(app).post(`/api/agencies/${agencyId}/members`).set(as('agAdmin')).send({ phone: '+919800001005', role: 'staff' }).expect(409);
+    await request(app).post(`/api/agencies/${agencyId}/members`).set(as('agStaff')).send({ email: emailFor('+919800001005') }).expect(404);
+    await request(app).post(`/api/agencies/${agencyId}/members`).set(as('agAdmin')).send({ email: emailFor('+919800001005'), role: 'staff' }).expect(201);
+    await request(app).post(`/api/agencies/${agencyId}/members`).set(as('agAdmin')).send({ email: emailFor('+919800001005'), role: 'staff' }).expect(409);
     const a = (await request(app).get(`/api/agencies/${agencyId}`).set(as('agStaff')).expect(200)).body;
     expect(a.members).toHaveLength(2);
-    expect(a.members.every((m: any) => /\*+/.test(m.phone))).toBe(true); // numbers are masked
+    expect(a.members.every((m: any) => m.email && !('phone' in m))).toBe(true); // names and emails, no phone numbers
     await request(app).patch(`/api/agencies/${agencyId}`).set(as('agStaff')).send({ name: 'Hijack' }).expect(403);
     await request(app).patch(`/api/agencies/${agencyId}`).set(as('agAdmin')).send({ supportEmail: 'new@rajya.example' }).expect(200);
     const admin = a.members.find((m: any) => m.role === 'admin');
@@ -121,7 +122,7 @@ run('Agency view (integration)', () => {
     const b = (await request(app).get(`/api/t/${T['AG-1']}/agency/branding`).set(as('cand1')).expect(200)).body.agency;
     expect(b).toMatchObject({ brandName: 'Rajya Campaign Desk', primaryColor: '#1F4E79', supportEmail: 'new@rajya.example' });
     // A second agency cannot also become the brand.
-    const other = (await request(app).post('/api/admin/agencies').set(as('wes')).send({ name: 'Other Agency', slug: 'other-agency', adminPhone: '+919800001006' }).expect(201)).body.id;
+    const other = (await request(app).post('/api/admin/agencies').set(as('wes')).send({ name: 'Other Agency', slug: 'other-agency', adminEmail: emailFor('+919800001006') }).expect(201)).body.id;
     const code = await invite('cand1', T['AG-1'], true);
     await request(app).post(`/api/agencies/${other}/link`).set(as('stranger')).send({ code }).expect(422);
   });

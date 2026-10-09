@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { createApp } from '../src/app.js';
 import { usdMicrosToMinor } from '../src/modules/calls/cost.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor } from './auth-helper.js';
 
 describe('usdMicrosToMinor', () => {
   it('converts provider USD to paise/cents at the configured rate', () => {
@@ -28,12 +29,12 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
-    await owner.query('TRUNCATE audit_log, finance_signoffs, finance_entries, survey_responses, interactions, campaign_runs, content_items, memberships, tenants, otp_codes, users CASCADE');
+    await owner.query('TRUNCATE audit_log, finance_signoffs, finance_entries, survey_responses, interactions, campaign_runs, content_items, memberships, tenants, users CASCADE');
     pool = new pg.Pool({ connectionString: APP_URL });
     app = createApp({ env, pool });
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    const r = await request(app).post('/api/auth/otp/request').send({ phone: '+919800000301' });
-    token = (await request(app).post('/api/auth/otp/verify').send({ phone: '+919800000301', code: r.body.devCode })).body.accessToken;
+    const r = await ensureUser(app, '+919800000301');
+    token = (await tokenFor(app, '+919800000301')).body.accessToken;
     tenantId = (await request(app).post('/api/tenants').set(auth()).send({ raceType: 'assembly', seatCode: 'C1', electionDate: '2027-02-20', campaignName: 'Cost Test' })).body.id;
     await owner.query('UPDATE tenants SET spend_limit_minor = 10000 WHERE id = $1', [tenantId]);
     const item = (await owner.query("INSERT INTO content_items (tenant_id, kind, locale, title, body, status) VALUES ($1,'script','en','s','b','approved') RETURNING id", [tenantId])).rows[0].id;

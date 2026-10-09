@@ -7,6 +7,7 @@ import { createApp, resolveDeps } from '../src/app.js';
 import { signAccess, signRefresh, verifyAccess, verifyRefresh } from '../src/lib/jwt.js';
 import { safeEqual } from '../src/lib/crypto.js';
 import { testEnv } from './env.js';
+import { ensureUser, tokenFor } from './auth-helper.js';
 
 describe('tokens', () => {
   const S = 'current-secret-current-secret', OLD = 'previous-secret-previous-secret';
@@ -56,13 +57,13 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
   const as = (who: string) => ({ Authorization: `Bearer ${tok[who]}` });
   const q = async (sql: string, args: unknown[] = []) => (await owner.query(sql, args)).rows;
   async function login(a: ReturnType<typeof createApp>, phone: string) {
-    const r = await request(a).post('/api/auth/otp/request').send({ phone });
-    return (await request(a).post('/api/auth/otp/verify').send({ phone, code: r.body.devCode })).body.accessToken as string;
+    const r = await ensureUser(a, phone);
+    return (await tokenFor(a, phone)).body.accessToken as string;
   }
 
   beforeAll(async () => {
     owner = new pg.Pool({ connectionString: OWNER_URL });
-    await owner.query('TRUNCATE audit_log, finance_entries, interactions, campaign_runs, content_items, geo_areas, memberships, tenants, otp_codes, users CASCADE');
+    await owner.query('TRUNCATE audit_log, finance_entries, interactions, campaign_runs, content_items, geo_areas, memberships, tenants, users CASCADE');
     pool = new pg.Pool({ connectionString: APP_URL });
     app = createApp({ env, pool });
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -90,8 +91,8 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
     it('production adds HSTS', async () => {
       const prod = createApp(resolveDeps({
         pool, env: testEnv({
-          NODE_ENV: 'production', DEV_RETURN_OTP: 'false', REDIS_URL: 'redis://localhost:6379', EVIDENCE_SIGNING_KEY: 'k'.repeat(32), STORAGE_DRIVER: 's3', FILES_BUCKET: 'test-files',
-          OTP_PROVIDER: 'twilio', TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 't', TWILIO_MESSAGING_SERVICE_SID: 'MG1',
+          NODE_ENV: 'production', DEV_RETURN_RESET_TOKEN: 'false', REDIS_URL: 'redis://localhost:6379', EVIDENCE_SIGNING_KEY: 'k'.repeat(32), SMTP_URL: 'smtp://mail.example:587', STORAGE_DRIVER: 's3', FILES_BUCKET: 'test-files',
+          TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 't', TWILIO_MESSAGING_SERVICE_SID: 'MG1',
         }),
       }));
       expect((await request(prod).get('/api/region')).headers['strict-transport-security']).toContain('max-age=31536000');
@@ -169,9 +170,9 @@ const APP_URL = process.env.TEST_APP_DATABASE_URL;
 
   describe('bad input', () => {
     it('malformed JSON is a 400 and an oversized body is a 413, neither is a server error', async () => {
-      const bad = await request(app).post('/api/auth/otp/request').set('Content-Type', 'application/json').send('{"phone": ').expect(400);
+      const bad = await request(app).post('/api/auth/login').set('Content-Type', 'application/json').send('{"phone": ').expect(400);
       expect(bad.body.error).toBe('BAD_JSON');
-      const big = await request(app).post('/api/auth/otp/request').send({ phone: '+919800001999', pad: 'x'.repeat(1_100_000) }).expect(413);
+      const big = await request(app).post('/api/auth/login').send({ phone: '+919800001999', pad: 'x'.repeat(1_100_000) }).expect(413);
       expect(big.body.error).toBe('PAYLOAD_TOO_LARGE');
     });
 

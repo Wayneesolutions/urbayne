@@ -53,20 +53,29 @@ export const tenants = pgTable('tenants', {
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
-  phoneHash: text('phone_hash').notNull().unique(),
-  phoneEnc: text('phone_enc').notNull(),
+  /** Sign-in identity: lower-case email and a scrypt password hash. */
+  email: text('email'),
+  passwordHash: text('password_hash'),
+  passwordChangedAt: timestamp('password_changed_at', { withTimezone: true }),
+  /** True while the password was chosen by someone else (a new account, an admin reset): the person must pick their own first. */
+  mustChangePassword: boolean('must_change_password').notNull().default(false),
+  isSuperAdmin: boolean('is_super_admin').notNull().default(false),
+  disabledAt: timestamp('disabled_at', { withTimezone: true }),
+  lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+  /** Optional now: only used to match a results agent's text message to their account. */
+  phoneHash: text('phone_hash').unique(),
+  phoneEnc: text('phone_enc'),
   name: text('name'),
   locale: text('locale').notNull().default('en'),
   isWesAdmin: boolean('is_wes_admin').notNull().default(false),
   ...stamps,
 });
 
-export const otpCodes = pgTable('otp_codes', {
+export const passwordResets = pgTable('password_resets', {
   id: uuid('id').primaryKey().defaultRandom(),
-  phoneHash: text('phone_hash').notNull(),
-  codeHash: text('code_hash').notNull(),
+  userId: uuid('user_id').notNull(),
+  tokenHash: text('token_hash').notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  attempts: integer('attempts').notNull().default(0),
   usedAt: timestamp('used_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

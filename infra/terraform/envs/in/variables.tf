@@ -28,7 +28,7 @@ variable "alarm_email" {
 }
 
 variable "app_env" {
-  description = "Non-secret app settings. Must include OTP_PROVIDER = dlt"
+  description = "Non-secret app settings. Must include MAIL_FROM"
   type        = map(string)
 }
 
